@@ -22,6 +22,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   // C1 — theme-color so the PWA install / browser chrome matches the app.
+  // Also used by Android WebView/Tauri to color the status bar.
   themeColor: "#0a0a0a",
 };
 

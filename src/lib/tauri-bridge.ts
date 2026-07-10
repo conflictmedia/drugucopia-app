@@ -13,43 +13,50 @@
  *   - Playing notification sounds (Tauri delegates to the OS; web uses Audio)
  */
 
-import type { ActiveReminder } from '@/types'
+import type { ActiveReminder } from "@/types";
 
 // ─── Tauri runtime detection ──────────────────────────────────────────────────
 
 /** True when running inside a Tauri webview (desktop or mobile) */
 export function isTauri(): boolean {
-  return !!(typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__)
+  return !!(
+    typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__
+  );
 }
 
 // ─── Tauri plugin lazily-loaded modules ───────────────────────────────────────
 
 // We lazy-load the Tauri plugin modules so the web build doesn't break
 // when @tauri-apps/* packages aren't installed (regular PWA deployment).
-let _tauriNotification: typeof import('@tauri-apps/plugin-notification') | null = null
-let _tauriNotificationLoadPromise: Promise<typeof import('@tauri-apps/plugin-notification') | null> | null = null
+let _tauriNotification:
+  typeof import("@tauri-apps/plugin-notification") | null = null;
+let _tauriNotificationLoadPromise: Promise<
+  typeof import("@tauri-apps/plugin-notification") | null
+> | null = null;
 
 async function loadTauriNotification() {
-  if (_tauriNotification) return _tauriNotification
-  if (_tauriNotificationLoadPromise) return _tauriNotificationLoadPromise
+  if (_tauriNotification) return _tauriNotification;
+  if (_tauriNotificationLoadPromise) return _tauriNotificationLoadPromise;
 
-  _tauriNotificationLoadPromise = import('@tauri-apps/plugin-notification')
+  _tauriNotificationLoadPromise = import("@tauri-apps/plugin-notification")
     .then((mod) => {
-      _tauriNotification = mod
-      return mod
+      _tauriNotification = mod;
+      return mod;
     })
     .catch(() => {
       // @tauri-apps/plugin-notification not available — web fallback
-      console.warn('[tauri-bridge] @tauri-apps/plugin-notification not available')
-      return null
-    })
+      console.warn(
+        "[tauri-bridge] @tauri-apps/plugin-notification not available",
+      );
+      return null;
+    });
 
-  return _tauriNotificationLoadPromise
+  return _tauriNotificationLoadPromise;
 }
 
 // ─── Unified notification API ─────────────────────────────────────────────────
 
-export type NotificationPermissionStatus = 'granted' | 'denied' | 'default'
+export type NotificationPermissionStatus = "granted" | "denied" | "default";
 
 /**
  * Request notification permission.
@@ -57,22 +64,23 @@ export type NotificationPermissionStatus = 'granted' | 'denied' | 'default'
  */
 export async function requestNotificationPermission(): Promise<NotificationPermissionStatus> {
   if (isTauri()) {
-    const mod = await loadTauriNotification()
+    const mod = await loadTauriNotification();
     if (mod) {
       try {
-        const permission = await mod.requestPermission()
+        const permission = await mod.requestPermission();
         // Tauri returns 'granted' | 'denied' | 'default' — same strings
-        return permission as NotificationPermissionStatus
+        return permission as NotificationPermissionStatus;
       } catch (e) {
-        console.error('[tauri-bridge] requestPermission failed:', e)
-        return 'denied'
+        console.error("[tauri-bridge] requestPermission failed:", e);
+        return "denied";
       }
     }
   }
 
   // Web fallback
-  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied'
-  return Notification.requestPermission() as NotificationPermissionStatus
+  if (typeof window === "undefined" || !("Notification" in window))
+    return "denied";
+  return Notification.requestPermission() as unknown as NotificationPermissionStatus;
 }
 
 /**
@@ -80,20 +88,64 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  */
 export async function checkNotificationPermission(): Promise<NotificationPermissionStatus> {
   if (isTauri()) {
-    const mod = await loadTauriNotification()
+    const mod = await loadTauriNotification();
     if (mod) {
       try {
-        const granted = await mod.isPermissionGranted()
-        return granted ? 'granted' : 'default'
+        const granted = await mod.isPermissionGranted();
+        return granted ? "granted" : "default";
       } catch {
-        return 'default'
+        return "default";
       }
     }
   }
 
   // Web fallback
-  if (typeof window === 'undefined' || !('Notification' in window)) return 'denied'
-  return Notification.permission as NotificationPermissionStatus
+  if (typeof window === "undefined" || !("Notification" in window))
+    return "denied";
+  return Notification.permission as NotificationPermissionStatus;
+}
+
+/**
+ * Show a notification with an arbitrary title and body.
+ * Uses Tauri's native notification on mobile, or browser Notification API on web.
+ */
+export async function sendGenericNotification(
+  title: string,
+  body: string,
+): Promise<void> {
+  if (isTauri()) {
+    const mod = await loadTauriNotification();
+    if (mod) {
+      try {
+        mod.sendNotification({ title, body });
+        return;
+      } catch (e) {
+        console.error("[tauri-bridge] sendNotification failed:", e);
+      }
+    }
+  }
+
+  // Web fallback
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
+
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.controller.postMessage({
+      type: "SHOW_NOTIFICATION",
+      payload: {
+        title,
+        body,
+        tag: `timeline-${Date.now()}`,
+        icon: "/logo.png",
+      },
+    });
+  } else {
+    try {
+      new Notification(title, { body, icon: "/logo.png" });
+    } catch {
+      // Notification API may not be available
+    }
+  }
 }
 
 /**
@@ -105,48 +157,48 @@ export async function showNotification(
   reminder: ActiveReminder,
   customMessage?: string,
 ): Promise<void> {
-  const title = `${reminder.substanceName} Reminder`
+  const title = `${reminder.substanceName} Reminder`;
   const body =
-    customMessage || `Time for your next dose of ${reminder.substanceName}`
+    customMessage || `Time for your next dose of ${reminder.substanceName}`;
 
   if (isTauri()) {
-    const mod = await loadTauriNotification()
+    const mod = await loadTauriNotification();
     if (mod) {
       try {
         mod.sendNotification({
           title,
           body,
-        })
-        return
+        });
+        return;
       } catch (e) {
-        console.error('[tauri-bridge] sendNotification failed:', e)
+        console.error("[tauri-bridge] sendNotification failed:", e);
         // Fall through to web fallback
       }
     }
   }
 
   // Web fallback — try Service Worker first, then direct Notification API
-  if (typeof window === 'undefined' || !('Notification' in window)) return
-  if (Notification.permission !== 'granted') return
+  if (typeof window === "undefined" || !("Notification" in window)) return;
+  if (Notification.permission !== "granted") return;
 
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+  if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({
-      type: 'SHOW_NOTIFICATION',
+      type: "SHOW_NOTIFICATION",
       payload: {
         title,
         body,
         tag: `reminder-${reminder.id}`,
-        icon: '/logo.png',
+        icon: "/logo.png",
         data: { reminderId: reminder.id },
       },
-    })
+    });
   } else {
     try {
       new Notification(title, {
         body,
         tag: `reminder-${reminder.id}`,
-        icon: '/logo.png',
-      })
+        icon: "/logo.png",
+      });
     } catch {
       // Notification API may not be available in all contexts
     }
@@ -159,7 +211,7 @@ export async function showNotification(
  * the web Audio playback. In the browser, we use the custom sound.
  */
 export function shouldPlayWebSound(): boolean {
-  return !isTauri()
+  return !isTauri();
 }
 
 /**
@@ -167,5 +219,5 @@ export function shouldPlayWebSound(): boolean {
  * In Tauri, the app runs as a native binary — no SW needed.
  */
 export function shouldRegisterServiceWorker(): boolean {
-  return !isTauri()
+  return !isTauri();
 }

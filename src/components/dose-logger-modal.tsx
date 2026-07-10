@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Combobox, type ComboboxOption } from '@/components/ui/combobox'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { Plus, Loader2, AlertTriangle, Zap, Clock, CalendarDays, X, ChevronDown, ChevronUp, Pin, PinOff } from 'lucide-react'
+import { Plus, Loader2, AlertTriangle, Zap, Clock, CalendarDays, X, ChevronDown, ChevronUp, Pin, PinOff, GripVertical } from 'lucide-react'
 import { substances, searchSubstancesRanked } from '@/lib/substances/index'
 import { toast } from '@/hooks/use-toast'
 import { useDoseStore } from '@/store/dose-store'
@@ -1149,6 +1149,138 @@ export function DoseLoggerModal({
     handleSubmit()
   }
 
+  // Bottom sheet ref and drag state for mobile
+  const bottomSheetRef = useRef<HTMLDivElement>(null)
+  const [dragY, setDragY] = useState(0)
+  const [isDragging, setIsDragging] = useState(false)
+  const startYRef = useRef(0)
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    startYRef.current = e.touches[0].clientY
+    setIsDragging(true)
+  }, [])
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isDragging) return
+    const deltaY = e.touches[0].clientY - startYRef.current
+    if (deltaY > 0) {
+      setDragY(deltaY)
+    }
+  }, [isDragging])
+
+  const handleTouchEnd = useCallback(() => {
+    setIsDragging(false)
+    if (dragY > 100) {
+      handleClose()
+    }
+    setDragY(0)
+  }, [dragY, handleClose])
+
+  // Render bottom sheet on mobile, dialog on desktop
+  const renderModal = () => {
+    const sheetStyle: React.CSSProperties = {
+      transform: `translateY(${dragY}px)`,
+      transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+    }
+
+    if (isMobile) {
+      return (
+        <>
+          {/* Backdrop */}
+          <AnimatePresence>
+            {open && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
+                onClick={handleClose}
+                aria-hidden="true"
+              />
+            )}
+          </AnimatePresence>
+
+          {/* Bottom Sheet */}
+          <AnimatePresence>
+            {open && (
+              <motion.div
+                ref={bottomSheetRef}
+                initial={{ y: '100%' }}
+                animate={{ y: 0 }}
+                exit={{ y: '100%' }}
+                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+                className="bottom-sheet"
+                style={sheetStyle}
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
+                role="dialog"
+                aria-modal="true"
+                aria-label="Log a dose"
+              >
+                {/* Drag handle */}
+                <div className="bottom-sheet-drag" aria-hidden="true" />
+
+                {/* Close button */}
+                <button
+                  type="button"
+                  aria-label="Close"
+                  className="btn btn-circle btn-ghost absolute right-4 top-3 h-9 w-9 min-h-0 p-0 z-10"
+                  onClick={handleClose}
+                >
+                  <X className="h-5 w-5" />
+                </button>
+
+                <div className="pt-2 pb-safe max-h-[85dvh] overflow-y-auto">
+                  <div className="mb-4 px-4">
+                    <h3 className="text-lg font-semibold leading-none">Log a Dose</h3>
+                    <p className="text-sm text-neutral-content mt-1">
+                      Record your substance use for tracking and harm reduction purposes.
+                    </p>
+                  </div>
+                  {renderForm()}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </>
+      )
+    }
+
+    // Desktop: centered dialog
+    return (
+      <dialog
+        ref={dialogRef}
+        className="modal"
+        onClose={handleClose}
+      >
+        <div className="modal-box max-sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] max-w-[500px]">
+          <button
+            type="button"
+            aria-label="Close"
+            className="btn btn-circle btn-ghost tap-sm absolute right-3 top-3 h-8 w-8 min-h-0 p-0"
+            onClick={handleClose}
+          >
+            <X className="h-4 w-4" />
+          </button>
+
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold leading-none">Log a Dose</h3>
+            <p className="text-sm text-neutral-content mt-1">
+              Record your substance use for tracking and harm reduction purposes.
+            </p>
+          </div>
+
+          {renderForm()}
+        </div>
+        <form method="dialog" className="modal-backdrop">
+          <button type="button" onClick={handleClose}>close</button>
+        </form>
+      </dialog>
+    )
+  }
+
   if (trigger) {
     return (
       <>
@@ -1165,68 +1297,12 @@ export function DoseLoggerModal({
         >
           {trigger}
         </button>
-        <dialog
-          ref={dialogRef}
-          className="modal"
-          onClose={handleClose}
-        >
-          <div className="modal-box max-sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] max-w-[500px]">
-            <button
-              type="button"
-              aria-label="Close"
-              className="btn btn-circle btn-ghost tap-sm absolute right-3 top-3 h-8 w-8 min-h-0 p-0"
-              onClick={handleClose}
-            >
-              <X className="h-4 w-4" />
-            </button>
-
-            <div className="mb-4">
-              <h3 className="text-lg font-semibold leading-none">Log a Dose</h3>
-              <p className="text-sm text-neutral-content mt-1">
-                Record your substance use for tracking and harm reduction purposes.
-              </p>
-            </div>
-
-            {renderForm()}
-          </div>
-          <form method="dialog" className="modal-backdrop">
-            <button type="button" onClick={handleClose}>close</button>
-          </form>
-        </dialog>
+        {renderModal()}
       </>
     )
   }
 
-  return (
-    <dialog
-      ref={dialogRef}
-      className="modal"
-      onClose={handleClose}
-    >
-      <div className="modal-box max-sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] max-w-[500px]">
-        <button
-          type="button"
-          aria-label="Close"
-          className="btn btn-circle btn-ghost tap-sm absolute right-3 top-3 h-8 w-8 min-h-0 p-0"
-          onClick={handleClose}
-        >
-          <X className="h-4 w-4" />
-        </button>
-
-        <div className="mb-4">
-          <h3 className="text-lg font-semibold leading-none">Log a Dose</h3>
-          <p className="text-sm text-neutral-content mt-1">
-            Record your substance use for tracking and harm reduction purposes.
-          </p>
-        </div>
-
-        {renderForm()}
-      </div>
-      <form method="dialog" className="modal-backdrop">
-        <button type="button" onClick={handleClose}>close</button>
-      </form>
-    </dialog>
-  )
+  return renderModal()
 
   function renderForm() {
     return (

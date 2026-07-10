@@ -7,12 +7,12 @@
  * as a regular web app (PWA), falls back to the browser Notification API.
  */
 
-import type { ActiveReminder } from '@/types'
+import type { ActiveReminder } from "@/types";
 import {
   showNotification as tauriShowNotification,
   requestNotificationPermission as tauriRequestPermission,
   checkNotificationPermission as tauriCheckPermission,
-} from './tauri-bridge'
+} from "./tauri-bridge";
 
 /**
  * Show a notification for a fired reminder.
@@ -27,7 +27,7 @@ export function showBrowserNotification(
   // for backward compatibility. Errors are handled internally.
   tauriShowNotification(reminder, customMessage).catch(() => {
     // Silently ignore — the bridge already falls back to web notification
-  })
+  });
 }
 
 /**
@@ -36,7 +36,7 @@ export function showBrowserNotification(
  * Returns the permission result.
  */
 export async function requestNotificationPermission(): Promise<NotificationPermission> {
-  return tauriRequestPermission()
+  return tauriRequestPermission();
 }
 
 /**
@@ -44,7 +44,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
  * Useful for initializing the store on app load.
  */
 export async function checkNotificationPermissionStatus(): Promise<NotificationPermission> {
-  return tauriCheckPermission()
+  return tauriCheckPermission();
 }
 
 /**
@@ -52,20 +52,20 @@ export async function checkNotificationPermissionStatus(): Promise<NotificationP
  * e.g., "2h 34m", "45m", "30s"
  */
 export function formatRemainingTime(ms: number): string {
-  if (ms <= 0) return 'Now'
+  if (ms <= 0) return "Now";
 
-  const totalSeconds = Math.floor(ms / 1000)
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
 
   if (hours > 0) {
-    return `${hours}h ${minutes}m`
+    return `${hours}h ${minutes}m`;
   }
   if (minutes > 0) {
-    return `${minutes}m ${seconds}s`
+    return `${minutes}m ${seconds}s`;
   }
-  return `${seconds}s`
+  return `${seconds}s`;
 }
 
 /**
@@ -73,9 +73,9 @@ export function formatRemainingTime(ms: number): string {
  * e.g., "4 hours", "30 minutes", "1h 30m"
  */
 export function formatIntervalMinutes(minutes: number): string {
-  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? 's' : ''}`
-  const hours = Math.floor(minutes / 60)
-  const remaining = minutes % 60
-  if (remaining === 0) return `${hours} hour${hours !== 1 ? 's' : ''}`
-  return `${hours}h ${remaining}m`
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""}`;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  if (remaining === 0) return `${hours} hour${hours !== 1 ? "s" : ""}`;
+  return `${hours}h ${remaining}m`;
 }

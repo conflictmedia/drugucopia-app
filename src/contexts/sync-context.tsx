@@ -39,15 +39,23 @@ const SYNC_AUTH_KEY = 'drugucopia-sync-auth'
 // D3 — Split credential storage:
 //   - Room name lives in localStorage so the UI can pre-fill it on
 //     every page load (room names are not secret).
-//   - Password lives in sessionStorage so it's cleared when the tab
-//     closes, limiting the window during which a reusable secret sits
-//     on disk. The trade-off: auto-reconnect only works within the
-//     same tab session; closing the browser requires re-entering the
-//     password. This is intentional — passwords are often reused, and
-//     a stolen localStorage blob would give an attacker the raw
-//     password, not just sync access.
+//   - Password: on web, sessionStorage (cleared when tab closes).
+//     On Tauri (Android/Desktop), localStorage so it survives app restarts.
+//     This is because Tauri's webview is destroyed on app close, wiping
+//     sessionStorage. The trade-off is slightly lower security on Tauri
+//     but much better UX — users don't re-enter password on every launch.
 const SYNC_ROOM_KEY = 'drugucopia-sync-room'
 const SYNC_PASS_KEY = 'drugucopia-sync-pass'
+
+// Check if running in Tauri (where sessionStorage doesn't persist)
+function isTauri(): boolean {
+  return typeof window !== 'undefined' && !!(window as any).__TAURI_INTERNALS__
+}
+
+// Get the appropriate storage for password
+function getPassStorage(): Storage {
+  return isTauri() ? localStorage : sessionStorage
+}
 
 // D2 — localStorage key for the "last synced" dose baseline.
 // Stored as a JSON object: { [doseId]: updatedAtTimestamp }.
@@ -95,13 +103,14 @@ function clearDoseBaseline() {
 }
 
 // D3 — Credential storage helpers. Room name → localStorage (not
-// secret, used for UI pre-fill). Password → sessionStorage (cleared on
-// tab close). Combined read returns null if either piece is missing.
+// secret, used for UI pre-fill). Password → sessionStorage on web,
+// localStorage on Tauri (so it survives app restarts). Combined read
+// returns null if either piece is missing.
 function saveSyncCredentials(room: string, pass: string) {
   if (typeof window === 'undefined') return
   try {
     localStorage.setItem(SYNC_ROOM_KEY, room)
-    sessionStorage.setItem(SYNC_PASS_KEY, pass)
+    getPassStorage().setItem(SYNC_PASS_KEY, pass)
   } catch {
     /* ignore quota errors */
   }
@@ -111,7 +120,7 @@ function loadSyncCredentials(): { room: string; pass: string } | null {
   if (typeof window === 'undefined') return null
   try {
     const room = localStorage.getItem(SYNC_ROOM_KEY)
-    const pass = sessionStorage.getItem(SYNC_PASS_KEY)
+    const pass = getPassStorage().getItem(SYNC_PASS_KEY)
     if (!room || !pass) return null
     return { room, pass }
   } catch {
@@ -133,7 +142,7 @@ function clearSyncCredentials() {
   try {
     localStorage.removeItem(SYNC_ROOM_KEY)
     localStorage.removeItem(SYNC_AUTH_KEY) // legacy cleanup
-    sessionStorage.removeItem(SYNC_PASS_KEY)
+    getPassStorage().removeItem(SYNC_PASS_KEY)
   } catch {
     /* ignore */
   }
