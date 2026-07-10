@@ -1,0 +1,61 @@
+{
+  "name": "Drugucopia — Dose Logger and Substance Resources",
+  "short_name": "Drugucopia",
+  "description": "Documentation for psychoactive substances including effects, dosages, harm reduction, with an offline-first dose logger.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a0a0a",
+  "theme_color": "#0a0a0a",
+  "categories": ["health", "medical", "education", "lifestyle"],
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Log a dose",
+      "short_name": "Log Dose",
+      "url": "/?view=dose-log",
+      "description": "Open the dose logger"
+    },
+    {
+      "name": "Browse substances",
+      "short_name": "Substances",
+      "url": "/"
+    },
+    {
+      "name": "Check interactions",
+      "short_name": "Interactions",
+      "url": "/interactions/"
+    },
+    {
+      "name": "Harm reduction",
+      "short_name": "Harm Reduction",
+      "url": "/harm-reduction/"
+    }
+  ]
+}

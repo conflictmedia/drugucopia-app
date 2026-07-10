@@ -1,0 +1,3 @@
+[submodule "src/lib/substances"]
+	path = src/lib/substances
+	url = https://github.com/drugucopia/substances
