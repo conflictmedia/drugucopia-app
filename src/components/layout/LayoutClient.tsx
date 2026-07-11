@@ -32,14 +32,14 @@ export function LayoutClient({ children }: LayoutClientProps) {
     () => true,
     () => false,
   )
-  const isMobile = useSyncExternalStore(
-    (callback) => {
-      window.addEventListener('resize', callback)
-      return () => window.removeEventListener('resize', callback)
-    },
-    () => window.innerWidth < 768,
-    () => false,
-  )
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // ── Android back button: close drawer / dose logger when open ──
   useEffect(() => {
