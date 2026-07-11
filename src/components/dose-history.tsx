@@ -545,7 +545,7 @@ export function DoseHistory() {
       updateDose: s.updateDose,
     }))
   )
-  const { syncStatus, roomId, password, setRoomId, setPassword, connectToSync, disconnectSync, pushToSync } = useSync()
+  const { syncStatus, roomId, password, setRoomId, setPassword, connectToSync, disconnectSync, pushToSync, hasPendingChanges } = useSync()
   const openDoseLogger = useUIStore((s) => s.openDoseLogger)
 
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -1117,9 +1117,16 @@ export function DoseHistory() {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4" />
                     <span className="text-sm font-medium">Connected to Room: {roomId}</span>
+                    {hasPendingChanges && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded">
+                        Pending sync
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => pushToSync()}>Force Sync</Button>
+                    <Button size="sm" variant="outline" onClick={() => pushToSync({ bypassRateLimit: true })}>
+                      Force Sync
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={disconnectSync}>Disconnect</Button>
                   </div>
                 </div>

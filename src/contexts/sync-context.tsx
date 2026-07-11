@@ -102,6 +102,29 @@ function clearDoseBaseline() {
   }
 }
 
+// D3 — Track whether we've ever successfully synced before (persists across sessions).
+// This distinguishes "first ever sync" (where we ignore local deletions to avoid
+// wiping a new remote room) from "reconnect" (where we should respect local deletions).
+const SYNC_HAS_SYNCED_KEY = 'drugucopia-sync-has-synced'
+
+function hasSyncedBefore(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    return localStorage.getItem(SYNC_HAS_SYNCED_KEY) === 'true'
+  } catch {
+    return false
+  }
+}
+
+function markHasSynced() {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem(SYNC_HAS_SYNCED_KEY, 'true')
+  } catch {
+    /* ignore quota errors */
+  }
+}
+
 // D3 — Credential storage helpers. Room name → localStorage (not
 // secret, used for UI pre-fill). Password → sessionStorage on web,
 // localStorage on Tauri (so it survives app restarts). Combined read
@@ -383,7 +406,7 @@ interface SyncContextType {
   connectToSync: (rId?: string, pass?: string) => Promise<void>
   disconnectSync: () => void
   // Manually trigger a push to Firestore (useful for debugging / force-sync).
-  pushToSync: () => Promise<void>
+  pushToSync: (options?: { bypassRateLimit?: boolean }) => Promise<void>
   // D2 — Pending sync conflicts awaiting user resolution.
   pendingConflicts: DoseConflict[]
   // Resolve a conflict by ID. Choices:
@@ -393,6 +416,8 @@ interface SyncContextType {
   //              from the local version with a fresh ID
   resolveConflict: (conflictId: string, choice: 'local' | 'remote' | 'both') => void
   dismissConflict: (conflictId: string) => void
+  // True when there are local changes that haven't been pushed to the server yet.
+  hasPendingChanges: boolean
 }
 
 const SyncContext = createContext<SyncContextType | null>(null)
@@ -414,6 +439,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
   // D2 — pending conflicts awaiting user resolution. Cleared on disconnect.
   const [pendingConflicts, setPendingConflicts] = useState<DoseConflict[]>([])
+  // Track if there are local changes that haven't been pushed yet.
+  const [hasPendingChanges, setHasPendingChanges] = useState(false)
   const [roomId, setRoomId] = useState('')
   const [password, setPassword] = useState('')
 
@@ -470,7 +497,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     soundEnabled: useReminderStore.getState().soundEnabled,
   })
 
-  const pushToSync = useCallback(async () => {
+  // Ref to hold pushToSync so it can call itself recursively
+  const pushToSyncRef = useRef<typeof pushToSync>(null)
+
+  const pushToSync = useCallback(async (options?: { bypassRateLimit?: boolean }) => {
     // Debug: log all guard values so we can see exactly why pushes might not happen
     const guard = {
       hasCryptoKey: !!cryptoKeyRef.current,
@@ -491,7 +521,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       if (pushDebounceRef.current) clearTimeout(pushDebounceRef.current)
       pushDebounceRef.current = setTimeout(() => {
         pushDebounceRef.current = null
-        pushToSync()
+        pushToSyncRef.current?.(options)
       }, 1000)
       return
     }
@@ -507,17 +537,21 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Rate-limit: enforce minimum interval between Firestore writes
-    const now = Date.now()
-    const elapsed = now - lastWriteTimeRef.current
-    if (elapsed < MIN_WRITE_INTERVAL_MS) {
-      const delay = MIN_WRITE_INTERVAL_MS - elapsed
-      console.debug(`[sync] pushToSync rate-limited, retrying in ${delay}ms`)
-      if (pushDebounceRef.current) clearTimeout(pushDebounceRef.current)
-      pushDebounceRef.current = setTimeout(() => {
-        pushDebounceRef.current = null
-        pushToSync()
-      }, delay)
-      return
+    // Can be bypassed for manual "Force Sync" (but not for concurrent pushes)
+    const bypassRateLimit = options?.bypassRateLimit === true
+    if (!bypassRateLimit) {
+      const now = Date.now()
+      const elapsed = now - lastWriteTimeRef.current
+      if (elapsed < MIN_WRITE_INTERVAL_MS) {
+        const delay = MIN_WRITE_INTERVAL_MS - elapsed
+        console.debug(`[sync] pushToSync rate-limited, retrying in ${delay}ms`)
+        if (pushDebounceRef.current) clearTimeout(pushDebounceRef.current)
+        pushDebounceRef.current = setTimeout(() => {
+          pushDebounceRef.current = null
+          pushToSyncRef.current?.(options)
+        }, delay)
+        return
+      }
     }
 
     isPushingRef.current = true
@@ -551,6 +585,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       })
       lastWriteTimeRef.current = Date.now()
       console.debug('[sync] setDoc succeeded')
+      // Clear pending changes flag on successful push
+      setHasPendingChanges(false)
     } catch (e) {
       console.error('[sync] Failed to push sync:', e)
       // Surface the error to the user — include the FULL error message so the
@@ -572,6 +608,11 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isLoaded, reminderIsLoaded])
 
+  // Store pushToSync in ref so it can call itself recursively
+  useEffect(() => {
+    pushToSyncRef.current = pushToSync
+  }, [pushToSync])
+
   // Subscribe to Zustand store changes OUTSIDE of React render cycle.
   // Updates refs and triggers debounced push without causing re-renders.
   useEffect(() => {
@@ -585,6 +626,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         console.debug('[sync] auto-push skipped (sync merge), remaining skips:', skipAutoPushCountRef.current)
         return
       }
+
+      // Mark that we have pending local changes to sync
+      setHasPendingChanges(true)
 
       if (syncStatusRef.current === 'synced' && state.isLoaded && reminderIsLoaded && initialSyncDoneRef.current) {
         console.debug('[sync] dose store changed — scheduling push in 2s')
@@ -621,6 +665,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         console.debug('[sync] auto-push skipped (sync merge), remaining skips:', skipAutoPushCountRef.current)
         return
       }
+
+      // Mark that we have pending local changes to sync
+      setHasPendingChanges(true)
 
       if (syncStatusRef.current === 'synced' && isLoaded && state.isLoaded && initialSyncDoneRef.current) {
         console.debug('[sync] reminder store changed — scheduling push in 2s')
@@ -732,14 +779,14 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             const localDeleted = useDoseStore.getState().deletedIds
             console.debug('[sync] merging — local:', localDoses.length, 'doses, remote:', remoteDoses.length, 'doses')
 
-            // On the first sync after connect/reconnect, ignore local deletions.
-            // This ensures that entries deleted while offline are restored from
-            // the remote source of truth, rather than the deletions being
-            // propagated back and wiping the remote data.
-            const isFirstSync = !initialSyncDoneRef.current
+            // Determine if this is the FIRST EVER sync (not just first this session).
+            // On first-ever sync, we ignore local deletions to avoid wiping a new remote room.
+            // On reconnect, we respect local deletions so they propagate to the remote.
+            const isFirstEverSync = !hasSyncedBefore()
+            const isFirstSyncThisSession = !initialSyncDoneRef.current
             initialSyncDoneRef.current = true
             setSyncStatus('synced')
-            if (isFirstSync) {
+            if (isFirstSyncThisSession) {
               toast({ title: 'Secure Sync Active', description: 'Your data is now end-to-end encrypted and syncing.' })
             }
             setLastSyncedAt(new Date().toISOString())
@@ -748,11 +795,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             // we know the credentials are valid. Persist them so we can
             // auto-reconnect on next page load.
             // D3: use the split storage helpers instead of plaintext blob.
-            if (isFirstSync) {
+            if (isFirstSyncThisSession) {
               saveSyncCredentials(effectiveRId, effectivePass)
             }
 
-            const effectiveLocalDeleted = isFirstSync ? new Set<string>() : localDeleted
+            // Only ignore local deletions on the FIRST EVER sync, not on reconnect.
+            const effectiveLocalDeleted = isFirstEverSync ? new Set<string>() : localDeleted
 
             // D2 — Load the "last synced" baseline so we can detect
             // true conflicts (both sides edited the same dose since the
@@ -786,6 +834,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             // every dose in the merged result.
             saveDoseBaseline(merged)
 
+            // Mark that we've successfully synced at least once.
+            // This ensures future reconnects respect local deletions.
+            if (isFirstEverSync) {
+              markHasSynced()
+            }
+
             // ─── Reminder merge ───
             const remoteSchedules: ReminderSchedule[] = payload.schedules ?? []
             const remoteDeletedSchedules: Set<string> = new Set(payload.deletedSchedules ?? [])
@@ -796,8 +850,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             const localDeletedScheduleIds = useReminderStore.getState().deletedScheduleIds
             const localActiveReminders = useReminderStore.getState().activeReminders
 
-            // On first sync, ignore local schedule deletions (same as doses)
-            const effectiveLocalDeletedSchedules = isFirstSync ? new Set<string>() : localDeletedScheduleIds
+            // On first EVER sync, ignore local schedule deletions (same as doses)
+            const effectiveLocalDeletedSchedules = isFirstEverSync ? new Set<string>() : localDeletedScheduleIds
 
             const { schedules: mergedSchedules, deleted: mergedDeletedSchedules } = mergeSchedules(
               localSchedules, remoteSchedules, effectiveLocalDeletedSchedules, remoteDeletedSchedules,
@@ -958,6 +1012,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   // password is in sessionStorage, so auto-reconnect only works within
   // the same tab session. If the user closed the tab, the room name
   // is pre-filled but they'll need to re-enter the password.
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setState in useEffect is intentional for auto-connect
   useEffect(() => {
     const creds = loadSyncCredentials()
     if (creds) {
@@ -973,12 +1028,13 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }
     return () => { if (unsubscribeRef.current) unsubscribeRef.current() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [setRoomId, setPassword, connectToSync])
 
   const contextValue = useMemo(() => ({
     syncStatus, lastSyncedAt, roomId, password, setRoomId, setPassword, connectToSync, disconnectSync, pushToSync,
     pendingConflicts, resolveConflict, dismissConflict,
-  }), [syncStatus, lastSyncedAt, roomId, password, connectToSync, disconnectSync, pushToSync, pendingConflicts, resolveConflict, dismissConflict])
+    hasPendingChanges,
+  }), [syncStatus, lastSyncedAt, roomId, password, connectToSync, disconnectSync, pushToSync, pendingConflicts, resolveConflict, dismissConflict, hasPendingChanges])
 
   return (
     <SyncContext.Provider value={contextValue}>

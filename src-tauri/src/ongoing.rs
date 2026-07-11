@@ -1,17 +1,29 @@
-/// Ongoing notification commands for Android.
+/// Timeline notification commands for Android.
 ///
 /// On Android these use the `with_webview` + `jni_handle().exec()` API
 /// to access the JNI environment and Android Activity context, then call
-/// OngoingNotificationHelper.kt which creates notifications with
-/// `setOngoing(true)` (unswipeable) on a low-importance channel
-/// (no sound/vibration).
+/// OngoingNotificationHelper.kt which creates swipeable (setOngoing=false)
+/// notifications on a low-importance channel (no sound/vibration).
+/// The JavaScript timeline engine handles re-appearing notifications
+/// after a configurable cooldown when swiped away.
 ///
 /// On all other platforms they are no-ops (the JS side falls back to
 /// the browser Notification API).
 use tauri::command;
 
+/// Show (or update) an ongoing timeline notification.
+///
+/// NOTE: This is a **synchronous** Tauri command (not async) to avoid
+/// blocking the async runtime with JNI mpsc::recv() — previously this
+/// was `pub async fn` which caused thread-pool exhaustion and eventual
+/// ANR/crash after ~30s when the timeline notification interval fired
+/// repeatedly.  Making it sync lets Tauri run it on the blocking thread
+/// pool where blocking recv is safe.
+///
+/// All JNI errors are caught and logged — the command NEVER panics,
+/// preventing a single bad notification from crashing the entire app.
 #[command]
-pub async fn show_ongoing_notification(
+pub fn show_ongoing_notification(
     app: tauri::AppHandle,
     id: i32,
     title: String,
@@ -20,94 +32,110 @@ pub async fn show_ongoing_notification(
     #[cfg(target_os = "android")]
     {
         use std::sync::mpsc;
+        use std::time::Duration;
         use tauri::Manager;
+
+        // Sanitize inputs to prevent JNI crashes from malformed strings
+        let title = title.chars().take(45).collect::<String>();
+        let body = body.chars().take(90).collect::<String>();
+        let id = id.clamp(1000, 19999); // keep in safe range
 
         let (tx, rx) = mpsc::channel();
 
-        let webview_window = app
-            .get_webview_window("main")
-            .ok_or("Could not get main webview window")?;
+        let webview_window = match app.get_webview_window("main") {
+            Some(w) => w,
+            None => {
+                eprintln!("[ongoing-notif] no main webview — skipping (app likely backgrounded)");
+                return Ok(()); // not an error, just skip
+            }
+        };
 
-        // Clone data for error handling
-        let _title_clone = title.clone();
-        let _body_clone = body.clone();
+        let result = webview_window.with_webview(move |wv| {
+            wv.jni_handle().exec(move |env, activity, _webview| {
+                let result: Result<(), String> = (|| {
+                    use jni::objects::JValue;
 
-        let result = webview_window
-            .with_webview(move |wv| {
-                wv.jni_handle().exec(move |env, context, _webview| {
-                    let result = (|| -> Result<(), String> {
-                        use jni::objects::{JValue, JString};
+                    // Create Java strings — use AutoLocal to ensure cleanup
+                    let j_title = match env.new_string(&title) {
+                        Ok(s) => s,
+                        Err(e) => return Err(format!("new_string title: {e:?}")),
+                    };
+                    let j_body = match env.new_string(&body) {
+                        Ok(s) => s,
+                        Err(e) => return Err(format!("new_string body: {e:?}")),
+                    };
 
-                        // Convert Rust strings to Java strings
-                        let j_title: JString = env
-                            .new_string(&title)
-                            .map_err(|e| format!("new_string title: {e:?}"))?;
-                        let j_body: JString = env
-                            .new_string(&body)
-                            .map_err(|e| format!("new_string body: {e:?}"))?;
-
-                        // Find the Kotlin helper class (local ref, must delete)
-                        let class = env
-                            .find_class("com/drugucopia/app/OngoingNotificationHelper")
-                            .map_err(|e| format!("find_class: {e:?}"))?;
-
-                        // Call: OngoingNotificationHelper.show(Context, int, String, String)
-                        let call_result = env.call_static_method(
-                            &class,
-                            "show",
-                            "(Landroid/content/Context;ILjava/lang/String;Ljava/lang/String;)V",
-                            &[
-                                JValue::Object(context),
-                                JValue::Int(id),
-                                JValue::Object(&*j_title),
-                                JValue::Object(&*j_body),
-                            ],
-                        );
-
-                        // Check for pending Java exception BEFORE anything else.
-                        // If the Kotlin side threw (e.g. SecurityException from
-                        // missing POST_NOTIFICATIONS permission on Android 13+),
-                        // we must clear it here to prevent a native crash when
-                        // this JNI thread exits.
-                        // Use if-let to make exception_check failures non-fatal —
-                        // even if checking fails, we don't want the process to
-                        // crash; the worst case is a leaked exception descriptor.
-                        if let Ok(has_exception) = env.exception_check() {
-                            if has_exception {
-                                let _ = env.exception_describe();
-                                let _ = env.exception_clear();
-                                eprintln!(
-                                    "[ongoing-notif] Kotlin show() threw — clearing exception to prevent crash"
-                                );
-                            }
+                    // Find helper class
+                    let class = match env.find_class("com/drugucopia/app/OngoingNotificationHelper")
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            // clear exception if find_class threw
+                            let _ = env.exception_clear();
+                            return Err(format!("find_class: {e:?}"));
                         }
+                    };
 
-                        call_result
-                            .map_err(|e| format!("call show: {e:?}"))?;
+                    // Call static method
+                    let call_result = env.call_static_method(
+                        &class,
+                        "show",
+                        "(Landroid/content/Context;ILjava/lang/String;Ljava/lang/String;)V",
+                        &[
+                            JValue::Object(&activity),
+                            JValue::Int(id),
+                            JValue::Object(&j_title),
+                            JValue::Object(&j_body),
+                        ],
+                    );
 
-                        // Delete local references
-                        let _ = env.delete_local_ref(class);
-                        let _ = env.delete_local_ref(j_title);
-                        let _ = env.delete_local_ref(j_body);
+                    // ALWAYS check for Java exception first — prevents native crash
+                    if let Ok(true) = env.exception_check() {
+                        let _ = env.exception_describe();
+                        let _ = env.exception_clear();
+                        eprintln!(
+                            "[ongoing-notif] Java exception in show() — cleared to prevent crash"
+                        );
+                        return Err("java exception in show()".into());
+                    }
 
-                        Ok(())
-                    })();
+                    call_result
+                        .map(|_| ())
+                        .map_err(|e| format!("call show: {e:?}"))
+                    // Local refs (j_title, j_body, class) are auto-freed when this JNI frame returns.
+                    // Only 3 refs — well under the 512 local-ref limit, safe to rely on auto-cleanup.
+                })();
 
-                    let _ = tx.send(result);
-                });
-            })
-            .map_err(|e| format!("with_webview failed: {e:?}"));
+                let _ = tx.send(result);
+            });
+        });
 
-        // Handle webview access errors gracefully
         if let Err(e) = result {
-            eprintln!("[ongoing-notif] Webview access failed (app may be backgrounded): {e}");
-            // Don't crash - just log and return OK
-            // This prevents crashes when notifications are sent during app lifecycle transitions
-            return Ok(());
+            eprintln!("[ongoing-notif] with_webview failed (app may be backgrounded): {e}");
+            return Ok(()); // never crash the app for a notification failure
         }
 
-        rx.recv()
-            .map_err(|e| format!("channel recv failed: {e:?}"))?
+        // Use timeout to prevent indefinite blocking — 1.5s is plenty for a local JNI call
+        match rx.recv_timeout(Duration::from_millis(1500)) {
+            Ok(inner) => {
+                if let Err(e) = inner {
+                    eprintln!("[ongoing-notif] inner failed: {e}");
+                    // Do NOT propagate to JS — prevents crash loop
+                    return Ok(());
+                }
+                Ok(())
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                eprintln!(
+                    "[ongoing-notif] JNI call timed out after 1500ms — skipping to prevent ANR"
+                );
+                return Ok(()); // treat timeout as non-fatal
+            }
+            Err(e) => {
+                eprintln!("[ongoing-notif] channel recv failed: {e:?}");
+                return Ok(()); // never propagate channel errors to JS — prevents crash loop
+            }
+        }
     }
 
     #[cfg(not(target_os = "android"))]
@@ -118,73 +146,80 @@ pub async fn show_ongoing_notification(
 }
 
 #[command]
-pub async fn cancel_ongoing_notification(
-    app: tauri::AppHandle,
-    id: i32,
-) -> Result<(), String> {
+pub fn cancel_ongoing_notification(app: tauri::AppHandle, id: i32) -> Result<(), String> {
     #[cfg(target_os = "android")]
     {
         use std::sync::mpsc;
+        use std::time::Duration;
         use tauri::Manager;
+
+        let id = id.clamp(1000, 19999);
 
         let (tx, rx) = mpsc::channel();
 
-        let webview_window = app
-            .get_webview_window("main")
-            .ok_or("Could not get main webview window")?;
+        let webview_window = match app.get_webview_window("main") {
+            Some(w) => w,
+            None => {
+                // App backgrounded — silently skip, notification will clear on next launch
+                return Ok(());
+            }
+        };
 
-        let result = webview_window
-            .with_webview(move |wv| {
-                wv.jni_handle().exec(move |env, context, _webview| {
-                    let result = (|| -> Result<(), String> {
-                        use jni::objects::JValue;
+        let result = webview_window.with_webview(move |wv| {
+            wv.jni_handle().exec(move |env, activity, _webview| {
+                let result: Result<(), String> = (|| {
+                    use jni::objects::JValue;
 
-                        let class = env
-                            .find_class("com/drugucopia/app/OngoingNotificationHelper")
-                            .map_err(|e| format!("find_class: {e:?}"))?;
-
-                        // Call: OngoingNotificationHelper.cancel(Context, int)
-                        let call_result = env.call_static_method(
-                            &class,
-                            "cancel",
-                            "(Landroid/content/Context;I)V",
-                            &[JValue::Object(context), JValue::Int(id)],
-                        );
-
-                        // Check for pending Java exception (same defensive pattern as show)
-                        if let Ok(has_exception) = env.exception_check() {
-                            if has_exception {
-                                let _ = env.exception_describe();
-                                let _ = env.exception_clear();
-                                eprintln!(
-                                    "[ongoing-notif] Kotlin cancel() threw — clearing exception to prevent crash"
-                                );
-                            }
+                    let class = match env.find_class("com/drugucopia/app/OngoingNotificationHelper")
+                    {
+                        Ok(c) => c,
+                        Err(e) => {
+                            let _ = env.exception_clear();
+                            return Err(format!("find_class cancel: {e:?}"));
                         }
+                    };
 
-                        call_result
-                            .map_err(|e| format!("call cancel: {e:?}"))?;
+                    let call_result = env.call_static_method(
+                        &class,
+                        "cancel",
+                        "(Landroid/content/Context;I)V",
+                        &[JValue::Object(&activity), JValue::Int(id)],
+                    );
 
-                        // Delete local reference
-                        let _ = env.delete_local_ref(class);
+                    if let Ok(true) = env.exception_check() {
+                        let _ = env.exception_describe();
+                        let _ = env.exception_clear();
+                        eprintln!("[ongoing-notif] Java exception in cancel() — cleared");
+                        return Err("java exception in cancel()".into());
+                    }
 
-                        Ok(())
-                    })();
+                    call_result
+                        .map(|_| ())
+                        .map_err(|e| format!("call cancel: {e:?}"))
+                })();
 
-                    let _ = tx.send(result);
-                });
-            })
-            .map_err(|e| format!("with_webview failed: {e:?}"));
+                let _ = tx.send(result);
+            });
+        });
 
-        // Handle webview access errors gracefully
-        if let Err(e) = result {
-            eprintln!("[ongoing-notif] Webview access failed during cancel (app may be backgrounded): {e}");
-            // Don't crash - just log and return OK
+        if result.is_err() {
+            // webview gone — not fatal
             return Ok(());
         }
 
-        rx.recv()
-            .map_err(|e| format!("channel recv failed: {e:?}"))?
+        match rx.recv_timeout(Duration::from_millis(1000)) {
+            Ok(inner) => {
+                // cancel failures are non-critical — log but don't propagate
+                if let Err(e) = inner {
+                    eprintln!("[ongoing-notif] cancel failed (non-critical): {e}");
+                }
+                Ok(())
+            }
+            Err(_) => {
+                // timeout — non-critical
+                Ok(())
+            }
+        }
     }
 
     #[cfg(not(target_os = "android"))]

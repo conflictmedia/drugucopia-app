@@ -10,10 +10,14 @@ import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 
 /**
- * Creates and manages ONGOING (unswipeable) notifications for the
+ * Creates and manages TIMELINE notifications for the
  * Drugucopia timeline feature. Notifications are posted on a dedicated
  * low-importance channel so they never produce sound or vibration —
  * they act as silent status indicators.
+ *
+ * Unlike the previous "ongoing" implementation, these notifications are
+ * swipeable (setOngoing=false). The JavaScript timeline engine handles
+ * re-appearing them after a configurable cooldown when swiped away.
  *
  * Called from Rust via JNI (see lib.rs show_ongoing_notification command).
  */
@@ -21,23 +25,20 @@ object OngoingNotificationHelper {
     private const val CHANNEL_ID = "drugucopia_timeline"
     private const val CHANNEL_NAME = "Active Timelines"
 
-    private var channelCreated = false
-
-    /** Create the notification channel (idempotent). */
+    /** Create the notification channel (idempotent and thread-safe). */
     private fun ensureChannel(context: Context) {
-        if (channelCreated) return
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-        // Only create if it doesn't already exist
+        // Fast path: channel already exists
         if (manager.getNotificationChannel(CHANNEL_ID) != null) {
-            channelCreated = true
             return
         }
 
+        // Create channel - catch race where another thread created it first
         val channel = NotificationChannel(
             CHANNEL_ID,
             CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_LOW   // low = no sound
+            NotificationManager.IMPORTANCE_LOW
         ).apply {
             description = "Live timeline status for active doses"
             setSound(null, null)
@@ -45,12 +46,15 @@ object OngoingNotificationHelper {
             setShowBadge(false)
             lockscreenVisibility = NotificationCompat.VISIBILITY_PUBLIC
         }
-        manager.createNotificationChannel(channel)
-        channelCreated = true
+        try {
+            manager.createNotificationChannel(channel)
+        } catch (e: IllegalArgumentException) {
+            // Channel was created by another thread between check and create - ignore
+        }
     }
 
     /**
-     * Show (or update) an ongoing notification.
+     * Show (or update) a timeline notification.
      *
      * @param context  Android context (Activity)
      * @param id       Stable notification ID (from substance name hash)
@@ -73,8 +77,8 @@ object OngoingNotificationHelper {
             .setContentTitle(title)
             .setContentText(body)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setOngoing(true)            // ← unswipeable!
-            .setAutoCancel(false)
+            .setOngoing(false)           // ← swipeable!
+            .setAutoCancel(true)         // ← swipe to dismiss
             .setSound(null)
             .setOnlyAlertOnce(true)      // no sound/vibration on updates
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -86,7 +90,7 @@ object OngoingNotificationHelper {
     }
 
     /**
-     * Cancel an ongoing notification.
+     * Cancel a timeline notification.
      *
      * @param context  Android context
      * @param id       Notification ID to cancel
