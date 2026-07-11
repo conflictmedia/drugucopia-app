@@ -253,7 +253,7 @@ export function SubstanceSearch({
                     onClick={() => navigateToSubstance(substance.id)}
                     onMouseEnter={() => setActiveIndex(index)}
                     className={cn(
-                      'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors',
+                      'flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm transition-colors min-h-[44px]',
                       isActive
                         ? 'bg-accent text-accent-content'
                         : 'hover:bg-base-200',

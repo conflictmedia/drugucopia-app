@@ -1342,7 +1342,7 @@ export function DoseLoggerModal({
                           unit: lastDose?.unit,
                           route: lastDose?.route,
                         })}
-                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300 min-h-0"
+                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300 min-h-0 min-h-[44px]"
                       >
                         {sub.category && (
                           <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[sub.category] || 'bg-zinc-500'}`} />
@@ -1352,7 +1352,7 @@ export function DoseLoggerModal({
                       <button
                         type="button"
                         onClick={() => toggleFavorite(sub)}
-                        className="tap-sm h-5 w-5 inline-flex items-center justify-center text-amber-600/70 hover:text-amber-700 dark:text-amber-400/70 dark:hover:text-amber-300 transition-colors min-h-0"
+                        className="tap-sm h-5 w-5 inline-flex items-center justify-center text-amber-600/70 hover:text-amber-700 dark:text-amber-400/70 dark:hover:text-amber-300 transition-colors min-h-0 min-h-[44px] min-w-[44px]"
                         aria-label={`Unpin ${sub.name}`}
                         title={`Unpin ${sub.name}`}
                       >
@@ -1385,7 +1385,7 @@ export function DoseLoggerModal({
                       <button
                         type="button"
                         onClick={() => selectRecentSubstance(sub)}
-                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-base-content/80 hover:text-base-content min-h-0"
+                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-base-content/80 hover:text-base-content min-h-0 min-h-[44px]"
                         title={
                           sub.amount && sub.unit
                             ? `Log ${sub.amount} ${sub.unit} ${sub.name} (${sub.route || 'oral'})`
@@ -1407,7 +1407,7 @@ export function DoseLoggerModal({
                           })
                         }
                         className={cn(
-                          'tap-sm h-5 w-5 inline-flex items-center justify-center transition-colors min-h-0',
+                          'tap-sm h-5 w-5 inline-flex items-center justify-center transition-colors min-h-0 min-h-[44px] min-w-[44px]',
                           isFav
                             ? 'text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300'
                             : 'text-neutral-content/40 hover:text-amber-600 dark:hover:text-amber-400',

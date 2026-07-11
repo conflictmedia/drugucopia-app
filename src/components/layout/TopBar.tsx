@@ -40,13 +40,13 @@ function SyncStatusButton() {
           ? 'Sync error'
           : 'Sync off'
 
-  return (
+return (
     <Button
       type="button"
       variant="ghost"
       size="icon"
       className={cn(
-        'relative',
+        'relative min-h-[44px] min-w-[44px]',
         syncStatus === 'synced' && 'text-success',
         syncStatus === 'connecting' && 'text-warning',
         syncStatus === 'error' && 'text-error',
@@ -99,7 +99,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
         <div className="navbar-start min-w-0 gap-2">
           <button
             type="button"
-            className="btn btn-ghost btn-square lg:hidden"
+            className="btn btn-ghost btn-square lg:hidden min-h-[44px] min-w-[44px]"
             onClick={onMenuClick}
             aria-label="Open navigation"
           >
@@ -108,7 +108,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
           <button
             type="button"
             onClick={handleTitleClick}
-            className="btn btn-ghost btn-sm gap-0 px-2 -ml-1 h-auto py-1 normal-case font-normal min-w-0"
+            className="btn btn-ghost btn-sm gap-0 px-2 -ml-1 h-auto py-1 normal-case font-normal min-w-0 min-h-[44px]"
             aria-label="Go to Library"
             title="Go to Library"
           >
@@ -133,7 +133,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
             type="button"
             variant="default"
             size="sm"
-            className="gap-1.5"
+            className="gap-1.5 min-h-[44px]"
             onClick={handleDoseLogClick}
           >
             <Plus className="h-3.5 w-3.5" />

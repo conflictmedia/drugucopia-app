@@ -653,7 +653,7 @@ function KratomCalculatorContent() {
                   setInputMode(p.mode)
                   setExtractValue(String(p.value))
                 }}
-                className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-h-[36px] ${extractNumber === p.value && inputMode === p.mode
+                className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-h-[44px] ${extractNumber === p.value && inputMode === p.mode
                     ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
                     : 'border-base-300 bg-base-200/50 text-neutral-content hover:bg-base-300'
                   }`}

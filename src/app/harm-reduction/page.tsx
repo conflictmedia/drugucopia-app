@@ -119,12 +119,12 @@ function EmergencyCard({ resource }: { resource: typeof emergencyResources[0] })
 }
 
 function PrincipleChip({ principle }: { principle: typeof quickPrinciples[0] }) {
-  const Icon = getGuideIcon(principle.icon) || Shield
+  const iconComponent = getGuideIcon(principle.icon)
   return (
     <div className="card card-transparent card-lift">
       <div className="card-body flex-row items-start gap-3 p-4">
         <div className="p-2 rounded-lg bg-gradient-to-br from-primary/15 to-primary/5 shrink-0 border border-primary/10">
-          <Icon className="h-4 w-4 text-primary" />
+          {React.createElement(iconComponent, { className: 'h-4 w-4 text-primary' })}
         </div>
         <div className="min-w-0">
           <p className="font-semibold text-sm">{principle.title}</p>
@@ -140,7 +140,7 @@ function InteractionRow({ interaction }: { interaction: DangerousInteraction }) 
   const riskLabel = riskLabels[interaction.risk] || interaction.risk.toUpperCase()
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-xl border border-white/8 bg-transparent hover:bg-white/5 transition-all card-lift">
+    <div className="flex items-start gap-3 p-3 rounded-xl border border-base-300/70 bg-transparent hover:bg-base-200/50 transition-all card-lift">
       <div className="flex items-center gap-2 shrink-0 mt-0.5">
         <AlertTriangle className="h-4 w-4 text-red-400" />
       </div>
@@ -148,12 +148,8 @@ function InteractionRow({ interaction }: { interaction: DangerousInteraction }) 
         <div className="flex flex-wrap items-center gap-1.5 mb-1">
           {interaction.substances.map((sub, i) => (
             <React.Fragment key={i}>
-              {i > 0 && (
-                <span className="text-neutral-content text-xs font-bold">+</span>
-              )}
-              <span className="badge badge-outline text-xs font-medium">
-                {sub}
-              </span>
+              {i > 0 && <span className="text-neutral-content text-xs font-bold">+</span>}
+              <span className="badge badge-outline text-xs font-medium">{sub}</span>
             </React.Fragment>
           ))}
         </div>
@@ -173,15 +169,7 @@ function InteractionRow({ interaction }: { interaction: DangerousInteraction }) 
   )
 }
 
-// ─── MAIN PAGE ───────────────────────────────────────────────────────────────
-
-export default function HarmReductionPage() {
-  return (
-    <Suspense fallback={<HarmReductionFallback />}>
-      <HarmReductionContent />
-    </Suspense>
-  )
-}
+// ─── FALLBACK ────────────────────────────────────────────────────────────────
 
 function HarmReductionFallback() {
   return (
@@ -191,21 +179,20 @@ function HarmReductionFallback() {
   )
 }
 
+// ─── MAIN CONTENT ────────────────────────────────────────────────────────────
+
 function HarmReductionContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // G3 — substance-specific deep link. When ?substance=<id> is set,
-  // show a personalized banner at the top with that substance's own
-  // harm-reduction tips + any dangerous interactions it's involved in.
+  // G3 — substance-specific deep link
   const substanceId = searchParams.get('substance')
   const targetedSubstance = useMemo(
     () => (substanceId ? substances.find((s) => s.id === substanceId) : undefined),
     [substanceId],
   )
 
-  // G3 — dangerous interactions that involve the targeted substance
-  // (matched against the substance's name, aliases, and common names).
+  // G3 — dangerous interactions for targeted substance
   const targetedInteractions = useMemo(() => {
     if (!targetedSubstance) return []
     const keywords = [
@@ -222,7 +209,7 @@ function HarmReductionContent() {
     )
   }, [targetedSubstance])
 
-  // H1 — search across harm-reduction guides. Filters by title + content.
+  // H1 — search across guides
   const [guideSearch, setGuideSearch] = useState('')
   const filteredGuides = useMemo(() => {
     const q = guideSearch.trim().toLowerCase()
@@ -234,8 +221,7 @@ function HarmReductionContent() {
     )
   }, [guideSearch])
 
-  // H1 — when searching, auto-expand all matching guides so the user
-  // sees the content without having to click each one.
+  // H1 — auto-expand on search
   const expandedOnSearch = useMemo(
     () => filteredGuides.map((g) => g.id),
     [filteredGuides, guideSearch],
@@ -243,8 +229,8 @@ function HarmReductionContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* ── Desktop Content ── */}
-      <div className="hidden md:block container mx-auto py-6 lg:py-10 max-w-5xl">
+      {/* ── Unified Content ── */}
+      <div className="container mx-auto py-6 lg:py-10 max-w-5xl flex-1">
         {/* Hero */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-3">
@@ -261,11 +247,7 @@ function HarmReductionContent() {
           </div>
         </div>
 
-        {/* G3 — Substance-specific harm-reduction deep link.
-            Shown when the user arrives from a substance detail page via
-            /harm-reduction/?substance=<id>. Surfaces the substance's own
-            harm-reduction tips + any dangerous interactions it's involved
-            in, so the user doesn't have to scroll the full guide list. */}
+        {/* G3 — Substance-specific deep link */}
         {targetedSubstance && (
           <section className="mb-8">
             <div className="rounded-xl border border-primary/30 bg-primary/5 p-5 space-y-4">
@@ -374,10 +356,8 @@ function HarmReductionContent() {
           <div className="flex items-center gap-2 mb-4 flex-wrap">
             <BookOpen className="h-5 w-5 text-primary" />
             <h3 className="text-xl font-semibold">Harm Reduction Guides</h3>
-            {/* H1 — search across guides. Filters by title + body content
-                so the user can find "how to test a substance" or
-                "dehydration" without scrolling 12+ accordions. */}
-            <div className="relative ml-auto w-full sm:w-64">
+            {/* H1 — search across guides */}
+            <div className="relative ml-auto w-full sm:w-64 lg:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-content/60 pointer-events-none" />
               <input
                 type="search"
@@ -415,8 +395,6 @@ function HarmReductionContent() {
               <Accordion
                 type="multiple"
                 className="w-full"
-                // H1 — when searching, auto-expand all matches so the
-                // user sees the content without clicking each one.
                 defaultValue={guideSearch.trim() ? expandedOnSearch : undefined}
               >
                 {filteredGuides.map((guide) => {
@@ -469,7 +447,7 @@ function HarmReductionContent() {
 
         {/* Dangerous Interactions */}
         <section className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
+          <div className="flex items-center gap-2 mb-4 flex-wrap">
             <AlertTriangle className="h-5 w-5 text-red-400" />
             <h3 className="text-xl font-semibold">Dangerous Interactions</h3>
             <span className="badge badge-outline bg-red-500/15 border-red-500/30 text-red-400 text-xs font-medium">
@@ -552,207 +530,14 @@ function HarmReductionContent() {
           </div>
         </section>
       </div>
-
-      {/* ── Mobile Content ── */}
-      <div className="md:hidden flex-1 overflow-y-auto pb-8">
-        {/* Hero */}
-        <div className="px-4 pt-4 pb-3 border-b border-base-300">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2.5 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/10">
-              <Shield className="h-6 w-6 text-primary" />
-            </div>
-            <div>
-              <h2 className="text-xl font-bold gradient-text">Harm Reduction Resources</h2>
-              <p className="text-xs text-neutral-content mt-0.5">
-                Comprehensive harm reduction info to keep you safe.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Emergency Resources */}
-        <section className="px-4 py-4 border-b border-base-300">
-          <div className="flex items-center gap-2 mb-3">
-            <AlertTriangle className="h-4 w-4 text-red-400" />
-            <h3 className="text-sm font-semibold">Emergency Contacts</h3>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            {emergencyResources.slice(0, 4).map((resource, i) => (
-              <EmergencyCard key={i} resource={resource} />
-            ))}
-          </div>
-        </section>
-
-        {/* Quick Principles */}
-        <section className="py-4 border-b border-base-300">
-          <div className="flex items-center gap-2 px-4 mb-3">
-            <Shield className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">Quick Principles</h3>
-          </div>
-          <div className="flex gap-3 overflow-x-auto px-4 pb-2 scrollbar-none">
-            {quickPrinciples.map((principle) => {
-              const Icon = getGuideIcon(principle.icon) || Shield
-              return (
-                <div
-                  key={principle.id}
-                  className="flex-shrink-0 w-40 p-3 rounded-xl border border-white/8 bg-transparent card-lift"
-                >
-                  <div className="p-1.5 rounded-md bg-primary/10 w-fit mb-2">
-                    <Icon className="h-3.5 w-3.5 text-primary" />
-                  </div>
-                  <p className="text-xs font-semibold mb-0.5">{principle.title}</p>
-                  <p className="text-[10px] text-neutral-content leading-relaxed">{principle.description}</p>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        {/* Harm Reduction Guides */}
-        <section className="py-4 border-b border-base-300">
-          <div className="flex items-center gap-2 px-4 mb-3">
-            <BookOpen className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">Guides</h3>
-            {/* H1 — mobile search box for guides (mirrors the desktop one) */}
-            <div className="relative ml-auto w-40">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3 w-3 text-neutral-content/60 pointer-events-none" />
-              <input
-                type="search"
-                value={guideSearch}
-                onChange={(e) => setGuideSearch(e.target.value)}
-                placeholder="Search…"
-                className="w-full bg-base-200/70 border border-base-300/50 rounded-md pl-7 pr-7 h-7 text-xs outline-none focus:border-primary/50 transition-colors"
-                aria-label="Search harm reduction guides"
-              />
-              {guideSearch && (
-                <button
-                  type="button"
-                  onClick={() => setGuideSearch('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-content/60 hover:text-base-content"
-                  aria-label="Clear guide search"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="card card-transparent mx-4">
-            {filteredGuides.length === 0 ? (
-              <div className="py-6 text-center text-xs text-neutral-content">
-                No guides match &ldquo;{guideSearch}&rdquo;.
-              </div>
-            ) : (
-              <Accordion
-                type="multiple"
-                className="w-full"
-                defaultValue={guideSearch.trim() ? expandedOnSearch : undefined}
-              >
-                {filteredGuides.map((guide) => {
-                  const GuideIcon = getGuideIcon(guide.icon)
-                  return (
-                    <AccordionItem key={guide.id} value={guide.id}>
-                      <AccordionTrigger className="px-4 py-3 hover:no-underline">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="p-1 rounded-md bg-base-200 shrink-0">
-                            <GuideIcon className="h-3.5 w-3.5 text-neutral-content" />
-                          </div>
-                          <span className="text-sm font-medium truncate">{guide.title}</span>
-                          <span
-                            className={`badge badge-outline text-[9px] font-bold shrink-0 ${severityColors[guide.severity]}`}
-                          >
-                            {severityLabels[guide.severity]}
-                          </span>
-                        </div>
-                      </AccordionTrigger>
-                      <AccordionContent className="px-4 pb-4">
-                        <div>
-                          {guide.content.split('\n\n').map((paragraph, i) => {
-                            const parts = paragraph.split(/(\*\*[^*]+\*\*)/g)
-                            return (
-                              <p key={i} className="text-xs text-neutral-content leading-relaxed mb-2 last:mb-0">
-                                {parts.map((part, j) => {
-                                  if (part.startsWith('**') && part.endsWith('**')) {
-                                    return (
-                                      <strong key={j} className="text-base-content font-semibold text-xs">
-                                        {part.slice(2, -2)}
-                                      </strong>
-                                    )
-                                  }
-                                  return part
-                                })}
-                              </p>
-                            )
-                          })}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  )
-                })}
-              </Accordion>
-            )}
-          </div>
-        </section>
-
-        {/* Dangerous Interactions */}
-        <section className="py-4 border-b border-base-300">
-          <div className="flex items-center gap-2 px-4 mb-3">
-            <AlertTriangle className="h-4 w-4 text-red-400" />
-            <h3 className="text-sm font-semibold">Dangerous Interactions</h3>
-          </div>
-          <div className="px-4 space-y-2">
-            {dangerousInteractions.map((interaction, i) => (
-              <InteractionRow key={i} interaction={interaction} />
-            ))}
-          </div>
-        </section>
-
-        {/* External Resources */}
-        <section className="py-4 border-b border-base-300">
-          <div className="flex items-center gap-2 px-4 mb-3">
-            <ExternalLink className="h-4 w-4 text-primary" />
-            <h3 className="text-sm font-semibold">Resources</h3>
-          </div>
-          <div className="px-4 space-y-2">
-            {externalResources.map((resource, i) => (
-              <a
-                key={i}
-                href={resource.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block"
-              >
-                <div className="card card-transparent hover:border-primary/50 transition-all card-lift">
-                  <div className="card-body p-3">
-                    <p className="text-sm font-semibold flex items-center gap-1.5">
-                      {resource.name}
-                      <ExternalLink className="h-3 w-3 text-neutral-content shrink-0" />
-                    </p>
-                    <p className="text-[11px] text-neutral-content mt-0.5 leading-relaxed line-clamp-2">
-                      {resource.description}
-                    </p>
-                  </div>
-                </div>
-              </a>
-            ))}
-          </div>
-        </section>
-
-        {/* Disclaimer */}
-        <section className="px-4 py-4">
-          <div className="alert alert-warning">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <div>
-              <h3 className="font-bold text-xs">Disclaimer</h3>
-              <p className="text-[10px] leading-relaxed">
-                This information is for educational and harm reduction purposes only.
-                Not medical advice. Drugucopia does not encourage illegal substance use.
-                Always consult healthcare professionals for medical guidance. If you or
-                someone you know is experiencing a medical emergency, call emergency services immediately.
-              </p>
-            </div>
-          </div>
-        </section>
-      </div>
     </div>
+  )
+}
+
+export default function HarmReductionPage() {
+  return (
+    <Suspense fallback={<HarmReductionFallback />}>
+      <HarmReductionContent />
+    </Suspense>
   )
 }

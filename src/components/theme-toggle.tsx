@@ -86,6 +86,7 @@ export function ThemeToggle() {
           suppressHydrationWarning
           aria-label="Change theme"
           title="Change theme"
+          className="min-h-[44px] min-w-[44px]"
         >
           {mounted ? (
             current === 'system' ? (
