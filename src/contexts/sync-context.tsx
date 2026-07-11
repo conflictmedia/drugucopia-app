@@ -737,13 +737,19 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
         isProcessingSnap = true
         console.debug('[sync] processSnapshot starting, doc exists:', docSnap.exists())
         try {
+          // Determine if this is the FIRST EVER sync (not just first this session).
+          // Used to gate the "Secure Sync Active" toast and credential persistence.
+          const isFirstEverSync = !hasSyncedBefore()
+
           if (!docSnap.exists()) {
             // New room — nothing to pull, push local state immediately.
             console.debug('[sync] new empty room — pushing local state')
             initialSyncDoneRef.current = true
             setSyncStatus('synced')
             setLastSyncedAt(new Date().toISOString())
-            toast({ title: 'Secure Sync Active', description: 'Your data is now end-to-end encrypted and syncing.' })
+            if (isFirstEverSync) {
+              toast({ title: 'Secure Sync Active', description: 'Your data is now end-to-end encrypted and syncing.' })
+            }
             saveSyncCredentials(effectiveRId, effectivePass)
             pushToSync()
             return
@@ -786,7 +792,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             const isFirstSyncThisSession = !initialSyncDoneRef.current
             initialSyncDoneRef.current = true
             setSyncStatus('synced')
-            if (isFirstSyncThisSession) {
+            if (isFirstEverSync) {
               toast({ title: 'Secure Sync Active', description: 'Your data is now end-to-end encrypted and syncing.' })
             }
             setLastSyncedAt(new Date().toISOString())
@@ -795,7 +801,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             // we know the credentials are valid. Persist them so we can
             // auto-reconnect on next page load.
             // D3: use the split storage helpers instead of plaintext blob.
-            if (isFirstSyncThisSession) {
+            if (isFirstEverSync) {
               saveSyncCredentials(effectiveRId, effectivePass)
             }
 

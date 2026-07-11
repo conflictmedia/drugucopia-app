@@ -58,6 +58,9 @@ const notificationCountPerHour = new Map<
 /** Track visibility state to pause notifications when app is backgrounded */
 let isVisible = true;
 
+/** Timestamp when app was last hidden (for ignoring quick navigation transitions) */
+let hiddenAt = 0;
+
 /**
  * Previous dose IDs — used by the dose-store subscription to detect actual
  * additions/removals instead of firing on every store update.
@@ -430,10 +433,12 @@ async function checkAndUpdate(force = false): Promise<void> {
       // Record notification sent (for cooldown tracking)
       recordNotificationSent(key);
 
-      // === CRITICAL: On force (new dose, startup, foreground) we ALSO
-      // send using the *exact same visible path* that reminders use.
+      // === CRITICAL: On TRUE force events (new dose, startup, manual force)
+      // we ALSO send using the *exact same visible path* that reminders use.
       // This is what actually makes the popup / shade notification appear.
-      if (force || isForegroundEvent) {
+      // NOT on foreground events - those only update the swipeable timeline notification.
+      const isTrueForceEvent = force && !isForegroundEvent;
+      if (isTrueForceEvent) {
         try {
           const { sendGenericNotification } = await import("./tauri-bridge");
           await sendGenericNotification(title, body);
@@ -510,10 +515,13 @@ export function startTimelineNotifications(): void {
 
   console.log("[timeline-notif] starting timeline notification engine");
 
-  // Clear any stale phase memory so the very first run always emits
-  lastPhase.clear();
-  lastNotificationSent.clear();
-  notificationCountPerHour.clear();
+  // Only clear phase memory on FIRST start, not on restart.
+  // This prevents spam on page navigation where visibilitychange fires.
+  if (!lastPhase.size && !lastNotificationSent.size) {
+    lastPhase.clear();
+    lastNotificationSent.clear();
+    notificationCountPerHour.clear();
+  }
 
   // Request permission early (same as reminders)
   ensureNotificationPermission().catch(() => {});
@@ -536,10 +544,27 @@ export function startTimelineNotifications(): void {
   visibilityHandler = () => {
     const wasHidden = !isVisible;
     isVisible = !document.hidden;
+
     if (!wasHidden && isVisible) {
-      // App came back to foreground — force an immediate update (may be new phases)
-      console.log("[timeline-notif] foreground → forcing check");
-      checkAndUpdate(true).catch(() => {});
+      // App came back to foreground
+      const now = Date.now();
+      const hiddenDuration = now - hiddenAt;
+
+      // Ignore quick transitions (< 2 seconds) which happen during Next.js
+      // client-side navigation. Only check if actually backgrounded for a while.
+      if (hiddenDuration < 2000) {
+        console.log("[timeline-notif] foreground → ignoring quick transition (" + hiddenDuration + "ms)");
+        return;
+      }
+
+      // App came back to foreground after being backgrounded — do a normal check
+      // (respects cooldown/phase change). Using force=true caused spam on every
+      // page navigation in Next.js.
+      console.log("[timeline-notif] foreground → checking (was hidden " + Math.round(hiddenDuration / 1000) + "s)");
+      checkAndUpdate(false).catch(() => {});
+    } else if (wasHidden && !isVisible) {
+      // App went to background
+      hiddenAt = Date.now();
     }
   };
 
