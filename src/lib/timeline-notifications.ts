@@ -55,11 +55,103 @@ const notificationCountPerHour = new Map<
   { count: number; windowStart: number }
 >();
 
+/**
+ * Whether the engine has completed its initial "priming" pass.
+ *
+ * PRIMING: On the very first `checkAndUpdate` call after the module loads
+ * (i.e. on every full page reload), we observe the current phase of every
+ * active substance and store it in `lastPhase` WITHOUT sending any
+ * notifications. Without this, the first check would see
+ * `prevPhase = undefined` for every substance, treat that as a "phase
+ * change" (undefined → current), and fire a notification for every active
+ * dose on every page navigation — which is the spam the user reported.
+ *
+ * After priming, subsequent checks (interval, visibility, dose-store
+ * subscription) compare against the primed `lastPhase` and only fire on
+ * REAL phase changes.
+ */
+let hasPrimed = false;
+
+/**
+ * localStorage keys for persisting notification state across page reloads.
+ *
+ * On a static-export Next.js app (and especially on Tauri Android), every
+ * full page reload re-evaluates the JS module and wipes module-level state.
+ * Without persistence, the cooldown timer resets on every navigation, so
+ * the user gets a notification every time they browse to a new page even
+ * if they just got one seconds ago.
+ *
+ * `lastNotificationSent` is persisted to localStorage (not sessionStorage)
+ * so the cooldown survives app close/reopen on mobile. We prune entries
+ * older than 1 hour on load to prevent unbounded growth.
+ */
+const COOLDOWN_STORAGE_KEY = "drugucopia-timeline-cooldown";
+
+/** Prune cooldown entries older than this (1 hour) on load. */
+const COOLDOWN_MAX_AGE_MS = 60 * 60 * 1000;
+
+/** Load persisted cooldown timestamps from localStorage. */
+function loadCooldownState(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(COOLDOWN_STORAGE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Record<string, number>;
+    const now = Date.now();
+    let changed = false;
+    for (const [key, ts] of Object.entries(parsed)) {
+      if (typeof ts === "number" && now - ts < COOLDOWN_MAX_AGE_MS) {
+        lastNotificationSent.set(key, ts);
+      } else {
+        changed = true; // stale entry, will be pruned on next save
+      }
+    }
+    if (changed) persistCooldownState();
+  } catch {
+    // ignore parse errors
+  }
+}
+
+/** Persist cooldown timestamps to localStorage. */
+function persistCooldownState(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const obj: Record<string, number> = {};
+    const now = Date.now();
+    for (const [key, ts] of lastNotificationSent) {
+      if (now - ts < COOLDOWN_MAX_AGE_MS) {
+        obj[key] = ts;
+      }
+    }
+    localStorage.setItem(COOLDOWN_STORAGE_KEY, JSON.stringify(obj));
+  } catch {
+    // ignore quota errors
+  }
+}
+
 /** Track visibility state to pause notifications when app is backgrounded */
 let isVisible = true;
 
-/** Timestamp when app was last hidden (for ignoring quick navigation transitions) */
-let hiddenAt = 0;
+/**
+ * Timestamp when app was last hidden (for ignoring quick navigation transitions).
+ *
+ * Initialized to `Date.now()` rather than `0` so that the 2-second threshold
+ * in the visibilitychange handler works correctly from the very first event.
+ * With `0`, `Date.now() - 0` is ~1.7 trillion ms, which always exceeds the
+ * threshold — meaning the "ignore quick transitions" guard never suppressed
+ * spurious events during Next.js client-side navigation, causing notification
+ * spam on every page change.
+ */
+let hiddenAt = Date.now();
+
+/**
+ * Previous `document.hidden` value, used to detect ACTUAL visibility state
+ * transitions. The `visibilitychange` event can fire spuriously on some
+ * platforms (notably Tauri Android during Next.js client-side navigation)
+ * WITHOUT `document.hidden` actually changing. By comparing the previous
+ * and current values, we can ignore those spurious events entirely.
+ */
+let prevDocumentHidden = false;
 
 /**
  * Previous dose IDs — used by the dose-store subscription to detect actual
@@ -169,6 +261,11 @@ function recordNotificationSent(key: string): void {
   if (hourly) {
     hourly.count += 1;
   }
+
+  // Persist to localStorage so the cooldown survives page reloads.
+  // Without this, navigating to a new page resets the cooldown and the
+  // user gets another notification immediately.
+  persistCooldownState();
 }
 
 // ─── Permission helper ────────────────────────────────────────────────────────
@@ -216,9 +313,22 @@ async function sendOngoingNotification(
     return;
   }
 
-  // 1. ALWAYS send a VISIBLE standard notification first (same path as reminders)
+  // Stable per-substance tag so the OS / browser REPLACES the prior
+  // notification instead of stacking a new one. Without this, every phase
+  // check spawns a brand-new notification entry — which the user perceives
+  // as "spam on every page navigation" because the buggy visibilitychange
+  // handler was firing checkAndUpdate on every route change, and each
+  // successful send created a fresh notification rather than updating the
+  // existing one.
+  const stableTag = `drugucopia-timeline-${id}`;
+
+  // 1. VISIBLE standard notification (same path as reminders).
+  //    On Tauri: native notification (with OS sound).
+  //    On web:   SW showNotification (requireInteraction) or direct Notification.
+  //    The stable tag ensures this REPLACES the previous notification for
+  //    the same substance instead of stacking.
   try {
-    await sendGenericNotification(title, body);
+    await sendGenericNotification(title, body, stableTag);
     console.log(
       "[timeline-notif] ✅ sent VISIBLE notification via sendGenericNotification:",
       title,
@@ -228,7 +338,11 @@ async function sendOngoingNotification(
     console.warn("[timeline-notif] sendGenericNotification failed:", e);
   }
 
-  // 2. Additionally send the Android timeline notification (swipeable, low-importance)
+  // 2. Additionally send the Android timeline notification (swipeable, low-importance).
+  //    This is a SEPARATE notification channel from #1 — it lives in the
+  //    notification shade as an "ongoing" indicator. It uses the same
+  //    numeric id across calls so subsequent sends UPDATE the existing
+  //    notification rather than stacking.
   if (isTauri()) {
     try {
       const { invoke } = await import("@tauri-apps/api/core");
@@ -239,26 +353,11 @@ async function sendOngoingNotification(
     }
   }
 
-  // 3. Extra web direct fallback (in case SW not ready)
-  if (
-    !isTauri() &&
-    typeof window !== "undefined" &&
-    "Notification" in window &&
-    Notification.permission === "granted"
-  ) {
-    try {
-      new Notification(title, {
-        body,
-        tag: `drugucopia-timeline-${id}`,
-        icon: "/logo.png",
-        renotify: true,
-        silent: false,
-      } as any);
-      console.log("[timeline-notif] web direct Notification sent");
-    } catch (e) {
-      console.warn("[timeline-notif] direct web notif failed:", e);
-    }
-  }
+  // NOTE: A previous "step 3" here called `new Notification(...)` directly
+  // with `renotify: true, silent: false`. That was redundant with step 1
+  // (which already covers the web path) AND `renotify: true` caused the
+  // user to be re-alerted every time the notification body was updated —
+  // compounding the spam. Removed.
 }
 
 async function cancelOngoingNotification(id: number): Promise<void> {
@@ -293,7 +392,86 @@ async function checkAndUpdate(force = false): Promise<void> {
         ds.initialize();
       } catch {}
     }
-    const doses = ds.doses;
+    // RE-READ the state after initialize() — zustand's getState() returns
+    // a snapshot, not a live reference. Without this re-read, `doses`
+    // would still be the old empty array even after initialization set
+    // the real doses, causing the priming logic to defer indefinitely.
+    const doses = useDoseStore.getState().doses;
+
+    // ── PRIMING ──────────────────────────────────────────────────────────
+    // On the very first check after module load (i.e. after every full
+    // page reload), we PRIME the `lastPhase` map with the current phase
+    // of every active substance WITHOUT sending any notifications.
+    //
+    // Why: on a page reload, all module-level state resets. `lastPhase`
+    // is empty, so `prevPhase = undefined` for every substance. Without
+    // priming, `phaseChanged = (undefined !== currentPhase) = true`,
+    // which fires a notification for EVERY active dose on EVERY page
+    // navigation. This is the root cause of the "notification fires every
+    // time you browse a page" spam.
+    //
+    // After priming, the first real check (interval, visibility, or dose
+    // store subscription) compares against the primed phases and only
+    // fires on ACTUAL phase changes.
+    //
+    // Note: `force=true` (manual force / new dose) bypasses priming —
+    // those are explicit user actions that SHOULD send notifications.
+    if (!hasPrimed && !force) {
+      // If the dose store hasn't hydrated yet, DON'T prime — just return
+      // and let the next check (delayed re-check, subscription, or
+      // interval) try again. Priming against an empty dose list would set
+      // `hasPrimed = true` with an empty `lastPhase`, and when the store
+      // later hydrates, every active dose would appear as a "phase change"
+      // (undefined → current) and fire a notification — the exact spam
+      // we're trying to prevent.
+      const freshState = useDoseStore.getState();
+      if (!freshState.isLoaded || doses.length === 0) {
+        console.log(
+          "[timeline-notif] PRIMING deferred — dose store not yet hydrated (isLoaded=",
+          freshState.isLoaded,
+          "doses=",
+          doses.length,
+          ")",
+        );
+        return;
+      }
+
+      console.log(
+        "[timeline-notif] PRIMING — observing current phases without sending notifications",
+      );
+      hasPrimed = true;
+
+      const now0 = Date.now();
+      for (const dose of doses) {
+        if (!dose.duration) continue;
+        const totalMins = safeParseDurationToMinutes(dose.duration.total);
+        if (totalMins <= 0) continue;
+        const doseTime = new Date(dose.timestamp).getTime();
+        const elapsedMins = (now0 - doseTime) / 60_000;
+        if (elapsedMins < 0) continue;
+        const timings = calculatePhaseTimings(dose.duration);
+        if (!timings || timings.totalDuration <= 0) continue;
+        const phase = getCurrentPhase(elapsedMins, timings);
+        const key = dose.substanceName.toLowerCase();
+        lastPhase.set(key, phase);
+        console.log(`[timeline-notif] PRIMED "${key}" → ${phase}`);
+      }
+
+      // Also restore the cooldown state from localStorage so the
+      // cooldown survives page reloads.
+      loadCooldownState();
+
+      // Schedule a real check after a short delay. This gives the dose
+      // store time to fully hydrate before we do the "real" first check.
+      // If phases haven't changed during that time, no notification fires
+      // (which is the correct behavior — the user just navigated, the
+      // phase didn't actually change).
+      setTimeout(() => {
+        checkAndUpdate(false).catch(() => {});
+      }, 2000);
+
+      return;
+    }
 
     console.log(
       "[timeline-notif] checkAndUpdate running — force=",
@@ -302,6 +480,8 @@ async function checkAndUpdate(force = false): Promise<void> {
       doses.length,
       "isLoaded:",
       ds.isLoaded,
+      "hasPrimed:",
+      hasPrimed,
     );
 
     // On force, clear lastPhase for substances we are about to evaluate
@@ -439,9 +619,13 @@ async function checkAndUpdate(force = false): Promise<void> {
       // NOT on foreground events - those only update the swipeable timeline notification.
       const isTrueForceEvent = force && !isForegroundEvent;
       if (isTrueForceEvent) {
+        // Use the same stable tag as sendOngoingNotification so the force
+        // send REPLACES the existing timeline notification for this
+        // substance rather than stacking a second one.
+        const forceTag = `drugucopia-timeline-${id}`;
         try {
           const { sendGenericNotification } = await import("./tauri-bridge");
-          await sendGenericNotification(title, body);
+          await sendGenericNotification(title, body, forceTag);
           console.log(
             "[timeline-notif] ✅ FORCE visible notification sent via sendGenericNotification",
           );
@@ -515,6 +699,22 @@ export function startTimelineNotifications(): void {
 
   console.log("[timeline-notif] starting timeline notification engine");
 
+  // Sync visibility tracking to the CURRENT document state. Without this,
+  // if the engine starts while the document is already hidden (e.g. the
+  // page loaded in a background tab), `isVisible` and `prevDocumentHidden`
+  // would be out of sync with reality, causing the first visibilitychange
+  // event to be misclassified.
+  if (typeof document !== "undefined") {
+    isVisible = !document.hidden;
+    prevDocumentHidden = document.hidden;
+    // If we're already hidden when starting, record that as the hiddenAt
+    // timestamp so the 2-second threshold works correctly when we later
+    // come back to foreground.
+    if (document.hidden) {
+      hiddenAt = Date.now();
+    }
+  }
+
   // Only clear phase memory on FIRST start, not on restart.
   // This prevents spam on page navigation where visibilitychange fires.
   if (!lastPhase.size && !lastNotificationSent.size) {
@@ -526,11 +726,19 @@ export function startTimelineNotifications(): void {
   // Request permission early (same as reminders)
   ensureNotificationPermission().catch(() => {});
 
-  // Initial check: clear phase memory so first run evaluates fresh
-  // but don't force-send - respect cooldown/phase logic
+  // Initial check: this triggers PRIMING (see checkAndUpdate). On the
+  // first call after module load, it observes the current phase of every
+  // active substance WITHOUT sending notifications, then schedules a
+  // real check 2 seconds later. This is the critical anti-spam measure —
+  // without it, every page navigation fires a notification because the
+  // module state resets and `prevPhase = undefined` is treated as a
+  // "phase change".
   checkAndUpdate(false);
 
-  // Delayed re-check in case store hydrates late (very common)
+  // Delayed re-check in case the dose store hydrates late (very common
+  // on Tauri Android where localStorage reads are async-ish). By this
+  // point, priming has already completed, so this is a REAL check that
+  // only fires notifications on actual phase changes.
   setTimeout(() => {
     console.log("[timeline-notif] delayed re-check after start");
     checkAndUpdate(false).catch(() => {});
@@ -540,32 +748,87 @@ export function startTimelineNotifications(): void {
     checkAndUpdate(false).catch(() => {});
   }, 4500);
 
-  // Handle visibility changes to pause notifications when app is backgrounded
+  // Handle visibility changes to pause notifications when app is backgrounded.
+  //
+  // ── Why this matters ─────────────────────────────────────────────────
+  // On Tauri Android (and some other webviews), `visibilitychange` fires
+  // SPURIOUSLY during Next.js client-side route transitions — even though
+  // `document.hidden` never actually becomes `true`. The previous version
+  // of this handler had TWO bugs that turned those spurious events into
+  // notification spam on every page navigation:
+  //
+  //   Bug 1 (inverted conditions): The branch labeled "App came back to
+  //   foreground" used `!wasHidden && isVisible`, which actually matches
+  //   "was visible AND is still visible" — i.e. NO transition. So the
+  //   "foreground" code path fired on every spurious event while the
+  //   document stayed visible. The correct condition is
+  //   `wasHidden && isVisible` (was hidden, now visible).
+  //
+  //   Bug 2 (hiddenAt = 0): The 2-second threshold meant to suppress
+  //   quick navigation transitions never worked because `hiddenAt` was
+  //   initialized to `0`, making `Date.now() - 0` ≈ 1.7 trillion ms —
+  //   always > 2000. Plus, because of Bug 1, the `else if` branch that
+  //   sets `hiddenAt` never fired either, so it stayed at 0 forever.
+  //
+  // The fix below:
+  //   • Tracks `prevDocumentHidden` so we can ignore events where
+  //     `document.hidden` didn't actually change (defensive guard).
+  //   • Uses the CORRECT conditions for foreground/background transitions.
+  //   • Initializes `hiddenAt = Date.now()` (done at module scope above)
+  //     so the 2-second threshold works from the very first event.
   visibilityHandler = () => {
-    const wasHidden = !isVisible;
-    isVisible = !document.hidden;
+    const nowHidden = document.hidden;
+    const visibilityChanged = nowHidden !== prevDocumentHidden;
+    prevDocumentHidden = nowHidden;
 
-    if (!wasHidden && isVisible) {
-      // App came back to foreground
+    // Defensive guard: if `document.hidden` didn't actually change, this
+    // is a spurious event (Next.js navigation on Tauri Android fires
+    // these). Ignore it entirely — no `checkAndUpdate`, no `hiddenAt`
+    // update. This is the single most important fix for the spam.
+    if (!visibilityChanged) {
+      return;
+    }
+
+    const wasHidden = !isVisible;
+    isVisible = !nowHidden;
+
+    if (wasHidden && isVisible) {
+      // CORRECT "came back to foreground" branch:
+      // previous state was hidden, current state is visible.
       const now = Date.now();
       const hiddenDuration = now - hiddenAt;
 
-      // Ignore quick transitions (< 2 seconds) which happen during Next.js
-      // client-side navigation. Only check if actually backgrounded for a while.
+      // Ignore quick transitions (< 2 seconds). These happen during
+      // Next.js client-side navigation on some platforms even when
+      // `document.hidden` did briefly flip. Only do a real check if
+      // the app was actually backgrounded for a meaningful duration.
       if (hiddenDuration < 2000) {
-        console.log("[timeline-notif] foreground → ignoring quick transition (" + hiddenDuration + "ms)");
+        console.log(
+          "[timeline-notif] foreground → ignoring quick transition (" +
+            hiddenDuration +
+            "ms)",
+        );
         return;
       }
 
-      // App came back to foreground after being backgrounded — do a normal check
-      // (respects cooldown/phase change). Using force=true caused spam on every
-      // page navigation in Next.js.
-      console.log("[timeline-notif] foreground → checking (was hidden " + Math.round(hiddenDuration / 1000) + "s)");
+      // App came back to foreground after being backgrounded — do a
+      // normal check (respects cooldown/phase change). Using force=true
+      // here caused spam on every page navigation in Next.js.
+      console.log(
+        "[timeline-notif] foreground → checking (was hidden " +
+          Math.round(hiddenDuration / 1000) +
+          "s)",
+      );
       checkAndUpdate(false).catch(() => {});
-    } else if (wasHidden && !isVisible) {
-      // App went to background
+    } else if (!wasHidden && !isVisible) {
+      // CORRECT "went to background" branch:
+      // previous state was visible, current state is hidden.
       hiddenAt = Date.now();
     }
+    // If neither branch matches, the state didn't transition in a way
+    // we care about (e.g. hidden→hidden or visible→visible, which
+    // shouldn't happen after the `visibilityChanged` guard, but we
+    // handle it defensively by doing nothing).
   };
 
   document.addEventListener("visibilitychange", visibilityHandler);
@@ -642,6 +905,16 @@ export function resetTimelineNotifications(): void {
   lastPhase.clear();
   lastNotificationSent.clear();
   notificationCountPerHour.clear();
+  hasPrimed = false;
+  // Also clear the persisted cooldown so a manual reset actually resets
+  // everything (not just the in-memory state).
+  if (typeof window !== "undefined") {
+    try {
+      localStorage.removeItem(COOLDOWN_STORAGE_KEY);
+    } catch {
+      // ignore
+    }
+  }
 }
 
 /** Force an immediate check (useful after logging a dose or from outside) */
@@ -665,9 +938,16 @@ export async function forceTimelineCheck(): Promise<void> {
             0,
             Math.round((Date.now() - new Date(d.timestamp).getTime()) / 60000),
           );
+          // Use a stable per-substance tag so the direct force send
+          // REPLACES the existing timeline notification rather than
+          // stacking on top of it.
+          const forceTag = `drugucopia-timeline-${substanceId(
+            d.substanceName.toLowerCase(),
+          )}`;
           await sendGenericNotification(
             d.substanceName,
             `🔸 Active dose (${mins}m ago) — timeline running`,
+            forceTag,
           );
         }
         console.log(
