@@ -51,11 +51,11 @@ export function AppSidebar({ expanded, onNavigate, onToggle }: AppSidebarProps) 
   return (
     <aside
       className={cn(
-        'flex min-h-full w-72 flex-col overflow-x-hidden border-r border-base-300 bg-base-200 transition-[width] duration-200 lg:sticky lg:top-0 lg:h-[100dvh] lg:overflow-hidden',
+        'flex min-h-full w-72 flex-col overflow-x-hidden border-r border-base-300 bg-base-200 transition-[width] duration-200 lg:sticky lg:top-0 lg:h-[100dvh] lg:overflow-hidden pb-[env(safe-area-inset-bottom,0px)]',
         expanded ? 'lg:w-60' : 'lg:w-16',
       )}
     >
-      <div className={cn('navbar min-h-16 border-b border-base-300', expanded ? 'px-3 sm:px-4' : 'px-2 lg:px-1.5')}>
+      <div className={cn('navbar min-h-16 border-b border-base-300 pt-[env(safe-area-inset-top,0px)]', expanded ? 'px-3 sm:px-4' : 'px-2 lg:px-1.5')}>
         <button
           type="button"
           className={cn(

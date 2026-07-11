@@ -1,7 +1,7 @@
 'use client'
 
 import { AlertTriangle } from 'lucide-react'
-import { useState, useSyncExternalStore, type ReactNode } from 'react'
+import { useState, useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { AppSidebar } from './AppSidebar'
 import { TopBar } from './TopBar'
 import { Toaster } from '@/components/ui/toaster'
@@ -40,6 +40,41 @@ export function LayoutClient({ children }: LayoutClientProps) {
     () => false,
   )
 
+  // ── Android back button: close drawer / dose logger when open ──
+  useEffect(() => {
+    const handlePopState = () => {
+      // If the drawer is open, close it and consume the back navigation
+      if (drawerOpen) {
+        setDrawerOpen(false)
+        return
+      }
+      // If the dose logger modal is open, close it
+      if (doseLoggerOpen) {
+        closeDoseLogger()
+        return
+      }
+    }
+
+    // Push a history entry when the drawer/modal opens so the back
+    // button has something to pop. When it closes, we don't push.
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [drawerOpen, doseLoggerOpen, closeDoseLogger])
+
+  // Push a history entry when drawer opens (so Android back can pop it)
+  useEffect(() => {
+    if (drawerOpen) {
+      window.history.pushState({ drawerOpen: true }, '')
+    }
+  }, [drawerOpen])
+
+  // Push a history entry when dose logger opens
+  useEffect(() => {
+    if (doseLoggerOpen) {
+      window.history.pushState({ doseLoggerOpen: true }, '')
+    }
+  }, [doseLoggerOpen])
+
   if (!mounted) {
     return (
       <div className="min-h-[100dvh] bg-transparent">
@@ -56,6 +91,10 @@ export function LayoutClient({ children }: LayoutClientProps) {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('drugucopia-sidebar-expanded', String(next))
     }
+  }
+
+  const closeDrawer = () => {
+    setDrawerOpen(false)
   }
 
   return (
@@ -79,21 +118,26 @@ export function LayoutClient({ children }: LayoutClientProps) {
                   onMenuClick={() => setDrawerOpen(true)}
                 />
 
-                <main className="relative flex-1 pb-[env(safe-area-inset-bottom)]">
+                <main className="relative flex-1 pb-[env(safe-area-inset-bottom,0px)]">
                   {children}
                 </main>
               </div>
 
-              <div className="drawer-side z-40">
-                <label
-                  htmlFor={DRAWER_ID}
+              <div className="drawer-side z-40 pb-[env(safe-area-inset-bottom,0px)]">
+                {/* Click overlay closes drawer — using a div instead of
+                    a <label> so we have full control and can also prevent
+                    the click from toggling the checkbox unexpectedly */}
+                <div
                   aria-label="close navigation"
                   className="drawer-overlay"
-                  onClick={() => setDrawerOpen(false)}
+                  onClick={closeDrawer}
+                  onKeyDown={(e) => { if (e.key === 'Escape') closeDrawer() }}
+                  role="button"
+                  tabIndex={-1}
                 />
                 <AppSidebar
                   expanded
-                  onNavigate={() => setDrawerOpen(false)}
+                  onNavigate={closeDrawer}
                   onToggle={toggleSidebar}
                 />
               </div>
@@ -108,7 +152,7 @@ export function LayoutClient({ children }: LayoutClientProps) {
                 <TopBar
                   onMenuClick={() => setDrawerOpen(true)}
                 />
-                <main className="relative flex-1">
+                <main className="relative flex-1 pb-[env(safe-area-inset-bottom,0px)]">
                   {children}
                 </main>
               </div>

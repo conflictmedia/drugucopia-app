@@ -682,7 +682,7 @@ function GroupCard({
     return group.routes
   }, [group, selectedRoute, selectedDose])
 
-  const sampleCount = isMobile ? 80 : 120
+  const sampleCount = isMobile ? 40 : 120
   // 2.1: compute the window override from the zoom selector. When windowHours
   // is set, clamp to [now - hours, now]. The override is memoized separately
   // from the chart config so the config memo only invalidates when the
@@ -816,7 +816,7 @@ function GroupCard({
   const PhaseIcon = phaseIcons[primaryPhase] || phaseIcons['onset']
 
   return (
-    <Card>
+    <Card className="chart-container">
       <CardHeader className="pb-2">
         {/* Header row */}
         <div className="flex items-center justify-between gap-2 flex-wrap">

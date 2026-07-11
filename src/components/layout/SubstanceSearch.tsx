@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Search, X } from 'lucide-react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { useDebounce } from '@/hooks/use-debounce'
 import { Input } from '@/components/ui/input'
 import { searchSubstancesRanked } from '@/lib/substances/index'
 import { cn } from '@/lib/utils'
@@ -82,10 +83,12 @@ export function SubstanceSearch({
     return () => document.removeEventListener('mousedown', handler)
   }, [searchOpen])
 
+  const debouncedQuery = useDebounce(searchQuery, 300)
+
   const searchResults = useMemo(() => {
-    if (!searchQuery.trim()) return []
-    return searchSubstancesRanked(searchQuery, { limit: 8 })
-  }, [searchQuery])
+    if (!debouncedQuery.trim()) return []
+    return searchSubstancesRanked(debouncedQuery, { limit: 8 })
+  }, [debouncedQuery])
 
   const navigateToSubstance = useCallback(
     (substanceId: string) => {

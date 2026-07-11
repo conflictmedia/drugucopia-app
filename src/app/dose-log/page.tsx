@@ -2,19 +2,11 @@
 
 import { Suspense, useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
-import {
-  Activity,
-  BellRing,
-  BarChart3,
-  Clock,
-  History,
-} from 'lucide-react'
+import { Bell, Activity, History, BarChart3, RotateCcw } from 'lucide-react'
 import { useDoseStore } from '@/store/dose-store'
 import { useReminderStore } from '@/store/reminder-store'
 
-// Lazy-load heavy client-only components so the page's initial bundle stays
-// small. These all pull in zustand stores, the substances DB, and (for the
-// chart) a chunk of SVG/d3-style code.
+// Lazy-load heavy client-only components
 const DoseHistory = dynamic(
   () => import('@/components/dose-history').then((m) => m.DoseHistory),
   { ssr: false, loading: () => null },
@@ -39,10 +31,14 @@ const SyncConflicts = dynamic(
   () => import('@/components/sync-conflicts').then((m) => m.SyncConflicts),
   { ssr: false, loading: () => null },
 )
+const TimelineNotificationSettings = dynamic(
+  () => import('@/components/timeline-notification-settings').then((m) => m.TimelineNotificationSettings),
+  { ssr: false, loading: () => null },
+)
 
 // ─── Tab model ─────────────────────────────────────────────────────────────
 
-type TrackTab = 'session' | 'history' | 'reminders' | 'insights'
+type TrackTab = 'session' | 'history' | 'reminders' | 'timeline-notifications' | 'insights'
 
 interface TabDef {
   id: TrackTab
@@ -53,7 +49,8 @@ interface TabDef {
 const TABS: TabDef[] = [
   { id: 'session', label: 'Active Session', icon: Activity },
   { id: 'history', label: 'History', icon: History },
-  { id: 'reminders', label: 'Reminders', icon: BellRing },
+  { id: 'reminders', label: 'Reminders', icon: Bell },
+  { id: 'timeline-notifications', label: 'Timeline Notifications', icon: RotateCcw },
   { id: 'insights', label: 'Insights', icon: BarChart3 },
 ]
 
@@ -80,7 +77,7 @@ function TrackHero() {
         <div className="max-w-2xl space-y-2">
           <span className="badge badge-outline badge-sm">Track workspace</span>
           <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">
-            Dose log, reminders &amp; session view
+            Dose log, reminders & session view
           </h1>
           <p className="text-sm text-neutral-content md:text-base">
             Review active reminders, follow your current session timeline, and keep your dose
@@ -177,7 +174,7 @@ function RemindersTab() {
       <section className="card border border-base-300 bg-base-100 shadow-sm">
         <div className="card-body gap-1.5 p-4 pb-0 md:p-5 md:pb-0">
           <h2 className="card-title text-base font-semibold">
-            <Clock className="h-5 w-5 text-primary" />
+            <Activity className="h-5 w-5 text-primary" />
             Reminder Settings
           </h2>
           <p className="text-sm text-neutral-content">
@@ -186,6 +183,29 @@ function RemindersTab() {
         </div>
         <div className="card-body p-4 pt-4 md:p-5 md:pt-4">
           <ReminderSettings />
+        </div>
+      </section>
+    </div>
+  )
+}
+
+// ─── Timeline Notifications tab ────────────────────────────────────────────
+
+function TimelineNotificationsTab() {
+  return (
+    <div className="space-y-6">
+      <section className="card border border-base-300 bg-base-100 shadow-sm">
+        <div className="card-body gap-1.5 p-4 pb-0 md:p-5 md:pb-0">
+          <h2 className="card-title text-base font-semibold">
+            <RotateCcw className="h-5 w-5 text-purple-500" />
+            Timeline Notifications
+          </h2>
+          <p className="text-sm text-neutral-content">
+            Configure live timeline notifications for active doses — reappear behavior, cooldown, and spam protection.
+          </p>
+        </div>
+        <div className="card-body p-4 pt-4 md:p-5 md:pt-4">
+          <TimelineNotificationSettings />
         </div>
       </section>
     </div>
@@ -229,10 +249,9 @@ function DoseLogPageContent() {
 
         <div role="tabpanel">
           {tab === 'session' && <ActiveSessionTab />}
-          {tab === 'history' && (
-            <DoseHistory />
-          )}
+          {tab === 'history' && <DoseHistory />}
           {tab === 'reminders' && <RemindersTab />}
+          {tab === 'timeline-notifications' && <TimelineNotificationsTab />}
           {tab === 'insights' && <InsightsTab />}
         </div>
       </div>

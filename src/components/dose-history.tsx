@@ -545,7 +545,7 @@ export function DoseHistory() {
       updateDose: s.updateDose,
     }))
   )
-  const { syncStatus, roomId, password, setRoomId, setPassword, connectToSync, disconnectSync, pushToSync } = useSync()
+  const { syncStatus, roomId, password, setRoomId, setPassword, connectToSync, disconnectSync, pushToSync, hasPendingChanges } = useSync()
   const openDoseLogger = useUIStore((s) => s.openDoseLogger)
 
   const [deleting, setDeleting] = useState<string | null>(null)
@@ -1117,9 +1117,16 @@ export function DoseHistory() {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="h-4 w-4" />
                     <span className="text-sm font-medium">Connected to Room: {roomId}</span>
+                    {hasPendingChanges && (
+                      <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-amber-500/20 text-amber-700 dark:text-amber-300 rounded">
+                        Pending sync
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => pushToSync()}>Force Sync</Button>
+                    <Button size="sm" variant="outline" onClick={() => pushToSync({ bypassRateLimit: true })}>
+                      Force Sync
+                    </Button>
                     <Button size="sm" variant="ghost" onClick={disconnectSync}>Disconnect</Button>
                   </div>
                 </div>
@@ -1281,7 +1288,7 @@ export function DoseHistory() {
                           const knownSubstance = substances.find(s => s.id === dose.substanceId || s.name.toLowerCase() === dose.substanceName.toLowerCase())
 
                           return (
-                            <div key={dose.id} className="rounded-lg border p-3 hover:bg-base-200/50 transition-colors">
+                            <div key={dose.id} className="dose-log-entry rounded-lg border p-3 hover:bg-base-200/50 transition-colors">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">

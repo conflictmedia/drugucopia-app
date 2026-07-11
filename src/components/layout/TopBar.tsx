@@ -94,7 +94,7 @@ export function TopBar({ onMenuClick }: TopBarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-30 border-b border-base-300 bg-base-100/90 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-base-300 bg-base-100/90 backdrop-blur pt-[env(safe-area-inset-top,0px)]">
       <div className="navbar min-h-16 gap-2 px-3 sm:px-4 lg:px-5">
         <div className="navbar-start min-w-0 gap-2">
           <button

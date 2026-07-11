@@ -66,7 +66,7 @@ export function InteractionPairCard({ result }: InteractionPairCardProps) {
   return (
     <div
       className={cn(
-        'card border transition-all hover:shadow-md',
+        'card border transition-all hover:shadow-md interaction-card',
         config.borderColor,
         config.bgColor
       )}

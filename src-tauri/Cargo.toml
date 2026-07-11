@@ -18,3 +18,8 @@ tauri-plugin-notification = "2"
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri-plugin-store = "2"
+
+# JNI for Android ongoing notifications (unswipeable)
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"
