@@ -12,7 +12,6 @@
 
 import { useDoseStore } from "@/store/dose-store";
 import { useTimelineNotificationStore } from "@/store/timeline-notification-store";
-import { useRef } from "react";
 import {
   parseDurationToMinutes,
   calculatePhaseTimings,
@@ -51,10 +50,27 @@ const lastPhase = new Map<string, Phase>();
 const lastNotificationSent = new Map<string, number>();
 
 /** Notification count per substance per hour (for spam protection) */
-const notificationCountPerHour = new Map<string, { count: number; windowStart: number }>();
+const notificationCountPerHour = new Map<
+  string,
+  { count: number; windowStart: number }
+>();
 
 /** Track visibility state to pause notifications when app is backgrounded */
 let isVisible = true;
+
+/**
+ * Previous dose IDs — used by the dose-store subscription to detect actual
+ * additions/removals instead of firing on every store update.
+ *
+ * NOTE: This used to be a `useRef` inside `startTimelineNotifications()`, but
+ * that violated the Rules of Hooks (calling a hook inside a non-component
+ * function) and threw React error #321 ("Invalid hook call. Hooks can only
+ * be called inside of the body of a function component."), which crashed
+ * the app on every launch and produced a remount loop. It is now a plain
+ * module-level variable, which is the correct pattern for state that lives
+ * outside React's render cycle.
+ */
+let prevDoseIds: string[] = [];
 
 const PHASE_DISPLAY: Record<Phase, string> = {
   onset: "Onset",
@@ -102,14 +118,21 @@ function safeParseDurationToMinutes(val: unknown): number {
 }
 
 /** Check if we can send a notification for this substance (cooldown + spam protection) */
-function canSendNotification(key: string, settings: ReturnType<typeof useTimelineNotificationStore.getState>["settings"]): boolean {
+function canSendNotification(
+  key: string,
+  settings: ReturnType<
+    typeof useTimelineNotificationStore.getState
+  >["settings"],
+): boolean {
   const now = Date.now();
   const cooldownMs = settings.notificationCooldownMinutes * 60_000;
 
   // Cooldown check
   const lastSent = lastNotificationSent.get(key);
   if (lastSent && now - lastSent < cooldownMs) {
-    console.log(`[timeline-notif] Cooldown active for ${key} (${Math.round((cooldownMs - (now - lastSent)) / 1000)}s remaining)`);
+    console.log(
+      `[timeline-notif] Cooldown active for ${key} (${Math.round((cooldownMs - (now - lastSent)) / 1000)}s remaining)`,
+    );
     return false;
   }
 
@@ -118,7 +141,9 @@ function canSendNotification(key: string, settings: ReturnType<typeof useTimelin
   if (hourly) {
     if (now - hourly.windowStart < 60 * 60_000) {
       if (hourly.count >= 3) {
-        console.warn(`[timeline-notif] SPAM PROTECTION: Max 3 notifications/hour reached for ${key}`);
+        console.warn(
+          `[timeline-notif] SPAM PROTECTION: Max 3 notifications/hour reached for ${key}`,
+        );
         return false;
       }
     } else {
@@ -181,7 +206,10 @@ async function sendOngoingNotification(
 ): Promise<void> {
   const hasPerm = await ensureNotificationPermission();
   if (!hasPerm) {
-    console.warn("[timeline-notif] no permission — skipping notification", title);
+    console.warn(
+      "[timeline-notif] no permission — skipping notification",
+      title,
+    );
     return;
   }
 
@@ -258,7 +286,9 @@ async function checkAndUpdate(force = false): Promise<void> {
 
     const ds = useDoseStore.getState();
     if (!ds.isLoaded && typeof ds.initialize === "function") {
-      try { ds.initialize(); } catch {}
+      try {
+        ds.initialize();
+      } catch {}
     }
     const doses = ds.doses;
 
@@ -369,8 +399,15 @@ async function checkAndUpdate(force = false): Promise<void> {
       }
 
       // Check cooldown and spam protection
-      if (!canSendNotification(key, useTimelineNotificationStore.getState().settings)) {
-        console.log(`[timeline-notif] Skipping ${key} due to cooldown/spam protection`);
+      if (
+        !canSendNotification(
+          key,
+          useTimelineNotificationStore.getState().settings,
+        )
+      ) {
+        console.log(
+          `[timeline-notif] Skipping ${key} due to cooldown/spam protection`,
+        );
         continue;
       }
 
@@ -508,25 +545,27 @@ export function startTimelineNotifications(): void {
 
   document.addEventListener("visibilitychange", visibilityHandler);
 
-  // Subscribe to dose changes for immediate reaction (e.g. right after logging a dose)
-  // Use a ref to track previous doses and only trigger on actual additions/removals
-  const prevDosesRef = useRef<string[]>([]);
-  
+  // Subscribe to dose changes for immediate reaction (e.g. right after logging a dose).
+  // We compare the current set of dose IDs against the previously seen set so we
+  // only trigger on actual additions/removals — not on every store hydration or
+  // unrelated state change. The previous-IDs list is kept in a module-level
+  // variable (`prevDoseIds`) because this function is NOT a React component and
+  // cannot use `useRef` (doing so throws React error #321).
   try {
     doseUnsub = useDoseStore.subscribe((state) => {
-      const currentDoses = (state.doses || []).map(d => d.id).sort();
-      const prevDoses = prevDosesRef.current;
-      
+      const currentDoses = (state.doses || []).map((d) => d.id).sort();
+
       // Check if doses actually changed (added or removed), not just hydration/loading
-      const dosesChanged = currentDoses.length !== prevDoses.length || 
-        currentDoses.some((id, i) => id !== prevDoses[i]);
-      
+      const dosesChanged =
+        currentDoses.length !== prevDoseIds.length ||
+        currentDoses.some((id, i) => id !== prevDoseIds[i]);
+
       if (!dosesChanged) {
         return;
       }
-      
-      prevDosesRef.current = currentDoses;
-      
+
+      prevDoseIds = currentDoses;
+
       console.log(
         "[timeline-notif] dose store changed — checking (doses:",
         state.doses?.length || 0,
