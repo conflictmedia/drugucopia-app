@@ -37,6 +37,7 @@ import { toast } from '@/hooks/use-toast'
 import { dextromethorphan as dxm } from '@/lib/substances/dissociatives/dextromethorphan'
 import { RedosePlanner } from '@/components/redose-planner'
 import type { DoseLog } from '@/types'
+import { ErrorBoundary, CalculatorErrorFallback } from '@/components/error-boundary'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1147,8 +1148,7 @@ function DXMCalculatorContent() {
     </div>
   )
 }
-
-export default function DXMCalculatorPage() {
+function DXMCalculatorPageInner() {
   return (
     <Suspense
       fallback={
@@ -1162,5 +1162,13 @@ export default function DXMCalculatorPage() {
     >
       <DXMCalculatorContent />
     </Suspense>
+  )
+}
+
+export default function DXMCalculatorPage() {
+  return (
+    <ErrorBoundary name="DXMCalculator" fallback={<CalculatorErrorFallback />}>
+      <DXMCalculatorPageInner />
+    </ErrorBoundary>
   )
 }

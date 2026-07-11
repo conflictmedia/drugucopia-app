@@ -35,6 +35,7 @@ import { toast } from '@/hooks/use-toast'
 import { kratom } from '@/lib/substances/opioids/kratom'
 import { RedosePlanner } from '@/components/redose-planner'
 import type { DoseLog } from '@/types'
+import { ErrorBoundary, CalculatorErrorFallback } from '@/components/error-boundary'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1443,7 +1444,9 @@ export default function KratomCalculatorPage() {
         </div>
       }
     >
-      <KratomCalculatorContent />
+      <ErrorBoundary fallback={<CalculatorErrorFallback />} name="KratomCalculator">
+        <KratomCalculatorContent />
+      </ErrorBoundary>
     </Suspense>
   )
 }
