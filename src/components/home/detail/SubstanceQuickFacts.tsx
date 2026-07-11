@@ -7,12 +7,17 @@ import {
   Route as RouteIcon,
   Scale,
   Shuffle,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react'
 import type { Substance } from '@/lib/types'
 import { categories } from '@/lib/categories'
 import { categoryColors } from '../home-constants'
 import { getRouteIcon, getSubstanceCategories } from '../home-utils'
 import { cn } from '@/lib/utils'
+import { useState } from 'react'
+import { BottomSheet } from '@/components/ui/BottomSheet'
+import { useMedia } from 'react-use'
 
 interface SubstanceQuickFactsProps {
   substance: Substance
@@ -36,11 +41,14 @@ interface SubstanceQuickFactsProps {
  * right rail (lg:col-span-1).
  */
 export function SubstanceQuickFacts({ substance, onOpenInteractions }: SubstanceQuickFactsProps) {
+  const isMobile = useMedia('(max-width: 1023px)', false)
+  const [isSheetOpen, setIsSheetOpen] = useState(false)
+
   const cats = getSubstanceCategories(substance)
   const routes = substance.routeData ? Object.keys(substance.routeData) : []
 
-  return (
-    <aside className="space-y-4">
+  const content = (
+    <>
       <div className="card border border-base-300/70 bg-base-100/70 backdrop-blur-sm shadow-sm">
         <div className="card-body gap-4 p-4 md:p-5">
           <h2 className="card-title text-base">Quick facts</h2>
@@ -151,6 +159,38 @@ export function SubstanceQuickFacts({ substance, onOpenInteractions }: Substance
           </div>
         </div>
       </div>
+    </>
+  )
+
+  if (isMobile) {
+    return (
+      <>
+        <BottomSheet
+          open={isSheetOpen}
+          onClose={() => setIsSheetOpen(false)}
+          title="Quick facts"
+          description={substance.name}
+          maxHeight="80dvh"
+        >
+          {content}
+        </BottomSheet>
+        <button
+          type="button"
+          onClick={() => setIsSheetOpen(true)}
+          className="btn btn-outline w-full gap-2"
+          aria-haspopup="dialog"
+        >
+          <ChevronDown className="h-4 w-4" />
+          <span>Quick facts</span>
+          <ChevronUp className="h-4 w-4" />
+        </button>
+      </>
+    )
+  }
+
+  return (
+    <aside className="space-y-4">
+      {content}
     </aside>
   )
 }

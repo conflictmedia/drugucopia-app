@@ -12,6 +12,7 @@
 
 import { useDoseStore } from "@/store/dose-store";
 import { useTimelineNotificationStore } from "@/store/timeline-notification-store";
+import { useRef } from "react";
 import {
   parseDurationToMinutes,
   calculatePhaseTimings,
@@ -480,17 +481,18 @@ export function startTimelineNotifications(): void {
   // Request permission early (same as reminders)
   ensureNotificationPermission().catch(() => {});
 
-  // Initial check: force send current phases even if "no change" recorded (first run)
-  checkAndUpdate(true);
+  // Initial check: clear phase memory so first run evaluates fresh
+  // but don't force-send - respect cooldown/phase logic
+  checkAndUpdate(false);
 
-  // Extra delayed check in case store hydrates a little late (very common)
+  // Delayed re-check in case store hydrates late (very common)
   setTimeout(() => {
     console.log("[timeline-notif] delayed re-check after start");
-    checkAndUpdate(true).catch(() => {});
+    checkAndUpdate(false).catch(() => {});
   }, 1500);
 
   setTimeout(() => {
-    checkAndUpdate(true).catch(() => {});
+    checkAndUpdate(false).catch(() => {});
   }, 4500);
 
   // Handle visibility changes to pause notifications when app is backgrounded
@@ -507,15 +509,31 @@ export function startTimelineNotifications(): void {
   document.addEventListener("visibilitychange", visibilityHandler);
 
   // Subscribe to dose changes for immediate reaction (e.g. right after logging a dose)
+  // Use a ref to track previous doses and only trigger on actual additions/removals
+  const prevDosesRef = useRef<string[]>([]);
+  
   try {
     doseUnsub = useDoseStore.subscribe((state) => {
+      const currentDoses = (state.doses || []).map(d => d.id).sort();
+      const prevDoses = prevDosesRef.current;
+      
+      // Check if doses actually changed (added or removed), not just hydration/loading
+      const dosesChanged = currentDoses.length !== prevDoses.length || 
+        currentDoses.some((id, i) => id !== prevDoses[i]);
+      
+      if (!dosesChanged) {
+        return;
+      }
+      
+      prevDosesRef.current = currentDoses;
+      
       console.log(
-        "[timeline-notif] dose store changed — forcing check (doses:",
+        "[timeline-notif] dose store changed — checking (doses:",
         state.doses?.length || 0,
         ")",
       );
-      // Fire immediately
-      checkAndUpdate(true).catch((e) =>
+      // Fire check WITHOUT force - respect phase change / cooldown logic
+      checkAndUpdate(false).catch((e) =>
         console.warn("[timeline-notif] subscribe check failed", e),
       );
     });

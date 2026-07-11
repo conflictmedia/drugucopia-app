@@ -58,8 +58,8 @@ export function TimelineNotificationSettings() {
   const handleResetDefaults = () => {
     updateSettings({
       enabled: true,
-      reappearAfterSwipe: true,
-      notificationCooldownMinutes: 1,
+      reappearAfterSwipe: false,
+      notificationCooldownMinutes: 5,
       showOnPhaseChangeOnly: true,
       showOnForeground: true,
     })
