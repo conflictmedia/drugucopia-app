@@ -12,8 +12,8 @@ export interface TimelineNotificationSettings {
 
 const DEFAULT_SETTINGS: TimelineNotificationSettings = {
   enabled: true,
-  reappearAfterSwipe: true,
-  notificationCooldownMinutes: 1,
+  reappearAfterSwipe: false,
+  notificationCooldownMinutes: 5,
   showOnPhaseChangeOnly: true,
   showOnForeground: true,
 };

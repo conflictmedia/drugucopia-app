@@ -4,6 +4,7 @@ import { AlertTriangle } from 'lucide-react'
 import { useState, useEffect, useSyncExternalStore, type ReactNode } from 'react'
 import { AppSidebar } from './AppSidebar'
 import { TopBar } from './TopBar'
+import { BottomNav } from './BottomNav'
 import { Toaster } from '@/components/ui/toaster'
 import { VisualizerControls } from '@/components/visualizer-controls'
 import { MilkdropBackgroundWrapper } from '@/components/milkdrop-background-wrapper'
@@ -31,14 +32,14 @@ export function LayoutClient({ children }: LayoutClientProps) {
     () => true,
     () => false,
   )
-  const isMobile = useSyncExternalStore(
-    (callback) => {
-      window.addEventListener('resize', callback)
-      return () => window.removeEventListener('resize', callback)
-    },
-    () => window.innerWidth < 768,
-    () => false,
-  )
+  const [isMobile, setIsMobile] = useState(false)
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768)
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // ── Android back button: close drawer / dose logger when open ──
   useEffect(() => {
@@ -118,12 +119,14 @@ export function LayoutClient({ children }: LayoutClientProps) {
                   onMenuClick={() => setDrawerOpen(true)}
                 />
 
-                <main className="relative flex-1 pb-[env(safe-area-inset-bottom,0px)]">
+                <main className="relative flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+64px)]">
                   {children}
                 </main>
+
+                <BottomNav />
               </div>
 
-              <div className="drawer-side z-40 pb-[env(safe-area-inset-bottom,0px)]">
+              <div className="drawer-side z-40 pb-[calc(env(safe-area-inset-bottom,0px)+64px)]">
                 {/* Click overlay closes drawer — using a div instead of
                     a <label> so we have full control and can also prevent
                     the click from toggling the checkbox unexpectedly */}

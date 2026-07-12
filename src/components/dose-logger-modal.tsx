@@ -19,10 +19,11 @@ import { DurationOverrideFields } from '@/components/duration-override-fields'
 import { useReminderStore } from '@/store/reminder-store'
 import { formatIntervalMinutes } from '@/lib/notification-utils'
 import { RedosePlanner } from '@/components/redose-planner'
-import { motion, AnimatePresence } from 'framer-motion'
 import { useUIStore } from '@/store/ui-store'
 import { cn } from '@/lib/utils'
 import { useMedia } from 'react-use'
+import { motion, AnimatePresence } from 'framer-motion'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 
 interface DoseLoggerModalProps {
   open?: boolean
@@ -659,6 +660,11 @@ export function DoseLoggerModal({
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen
   const dialogRef = useRef<HTMLDialogElement>(null)
   const isMobile = useMedia('(max-width: 767px)', false)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
 
   useEffect(() => {
     const dialog = dialogRef.current
@@ -1149,102 +1155,23 @@ export function DoseLoggerModal({
     handleSubmit()
   }
 
-  // Bottom sheet ref and drag state for mobile
-  const bottomSheetRef = useRef<HTMLDivElement>(null)
-  const [dragY, setDragY] = useState(0)
-  const [isDragging, setIsDragging] = useState(false)
-  const startYRef = useRef(0)
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    startYRef.current = e.touches[0].clientY
-    setIsDragging(true)
-  }, [])
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (!isDragging) return
-    const deltaY = e.touches[0].clientY - startYRef.current
-    if (deltaY > 0) {
-      setDragY(deltaY)
-    }
-  }, [isDragging])
-
-  const handleTouchEnd = useCallback(() => {
-    setIsDragging(false)
-    if (dragY > 100) {
-      handleClose()
-    }
-    setDragY(0)
-  }, [dragY, handleClose])
-
-  // Render bottom sheet on mobile, dialog on desktop
+  // Use BottomSheet on mobile, dialog on desktop
   const renderModal = () => {
-    const sheetStyle: React.CSSProperties = {
-      transform: `translateY(${dragY}px)`,
-      transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+    if (!mounted) {
+      return null
     }
-
     if (isMobile) {
       return (
-        <>
-          {/* Backdrop */}
-          <AnimatePresence>
-            {open && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm"
-                onClick={handleClose}
-                aria-hidden="true"
-              />
-            )}
-          </AnimatePresence>
-
-          {/* Bottom Sheet */}
-          <AnimatePresence>
-            {open && (
-              <motion.div
-                ref={bottomSheetRef}
-                initial={{ y: '100%' }}
-                animate={{ y: 0 }}
-                exit={{ y: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-                className="bottom-sheet"
-                style={sheetStyle}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-                onTouchCancel={handleTouchEnd}
-                role="dialog"
-                aria-modal="true"
-                aria-label="Log a dose"
-              >
-                {/* Drag handle */}
-                <div className="bottom-sheet-drag" aria-hidden="true" />
-
-                {/* Close button */}
-                <button
-                  type="button"
-                  aria-label="Close"
-                  className="btn btn-circle btn-ghost absolute right-4 top-3 h-9 w-9 min-h-0 p-0 z-10"
-                  onClick={handleClose}
-                >
-                  <X className="h-5 w-5" />
-                </button>
-
-                <div className="pt-2 pb-safe max-h-[85dvh] overflow-y-auto">
-                  <div className="mb-4 px-4">
-                    <h3 className="text-lg font-semibold leading-none">Log a Dose</h3>
-                    <p className="text-sm text-neutral-content mt-1">
-                      Record your substance use for tracking and harm reduction purposes.
-                    </p>
-                  </div>
-                  {renderForm()}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </>
+        <BottomSheet
+          open={open}
+          onClose={handleClose}
+          title="Log a Dose"
+          description="Record your substance use for tracking and harm reduction purposes."
+          showDragHandle={true}
+          maxHeight="85dvh"
+        >
+          {renderForm()}
+        </BottomSheet>
       )
     }
 
@@ -1342,7 +1269,7 @@ export function DoseLoggerModal({
                           unit: lastDose?.unit,
                           route: lastDose?.route,
                         })}
-                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300 min-h-0"
+                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300 min-h-0 min-h-[44px]"
                       >
                         {sub.category && (
                           <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[sub.category] || 'bg-zinc-500'}`} />
@@ -1352,7 +1279,7 @@ export function DoseLoggerModal({
                       <button
                         type="button"
                         onClick={() => toggleFavorite(sub)}
-                        className="tap-sm h-5 w-5 inline-flex items-center justify-center text-amber-600/70 hover:text-amber-700 dark:text-amber-400/70 dark:hover:text-amber-300 transition-colors min-h-0"
+                        className="tap-sm h-5 w-5 inline-flex items-center justify-center text-amber-600/70 hover:text-amber-700 dark:text-amber-400/70 dark:hover:text-amber-300 transition-colors min-h-0 min-h-[44px] min-w-[44px]"
                         aria-label={`Unpin ${sub.name}`}
                         title={`Unpin ${sub.name}`}
                       >
@@ -1385,7 +1312,7 @@ export function DoseLoggerModal({
                       <button
                         type="button"
                         onClick={() => selectRecentSubstance(sub)}
-                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-base-content/80 hover:text-base-content min-h-0"
+                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-base-content/80 hover:text-base-content min-h-0 min-h-[44px]"
                         title={
                           sub.amount && sub.unit
                             ? `Log ${sub.amount} ${sub.unit} ${sub.name} (${sub.route || 'oral'})`
@@ -1407,7 +1334,7 @@ export function DoseLoggerModal({
                           })
                         }
                         className={cn(
-                          'tap-sm h-5 w-5 inline-flex items-center justify-center transition-colors min-h-0',
+                          'tap-sm h-5 w-5 inline-flex items-center justify-center transition-colors min-h-0 min-h-[44px] min-w-[44px]',
                           isFav
                             ? 'text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300'
                             : 'text-neutral-content/40 hover:text-amber-600 dark:hover:text-amber-400',

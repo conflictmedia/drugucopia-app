@@ -108,16 +108,41 @@ export async function checkNotificationPermission(): Promise<NotificationPermiss
 /**
  * Show a notification with an arbitrary title and body.
  * Uses Tauri's native notification on mobile, or browser Notification API on web.
+ *
+ * `tag` — optional stable notification tag. When the same tag is reused
+ * across calls, the OS / browser REPLACES the prior notification instead
+ * of stacking a new one. This is critical for timeline updates: without a
+ * stable tag, every phase check spawns a brand-new notification that
+ * piles up in the shade (perceived as "spam" on every page navigation).
+ * When omitted, a unique tag is generated (legacy behavior).
  */
 export async function sendGenericNotification(
   title: string,
   body: string,
+  tag?: string,
 ): Promise<void> {
   if (isTauri()) {
     const mod = await loadTauriNotification();
     if (mod) {
       try {
-        mod.sendNotification({ title, body });
+        // Tauri's plugin-notification uses an `id` for replacement on
+        // Android. We pass the tag through as the notification identifier
+        // so subsequent sends with the same tag update the existing one
+        // instead of stacking. When no tag is provided, fall back to the
+        // default (always-new) behavior.
+        const payload: { title: string; body: string; id?: number } = {
+          title,
+          body,
+        };
+        if (tag) {
+          // Hash the string tag into a numeric id for Tauri.
+          let hash = 0;
+          for (let i = 0; i < tag.length; i++) {
+            hash = ((hash << 5) - hash + tag.charCodeAt(i)) | 0;
+          }
+          payload.id = Math.abs(hash) % 100000;
+        }
+        mod.sendNotification(payload);
         return;
       } catch (e) {
         console.error("[tauri-bridge] sendNotification failed:", e);
@@ -129,19 +154,26 @@ export async function sendGenericNotification(
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (Notification.permission !== "granted") return;
 
+  const notifTag = tag || `timeline-${Date.now()}`;
   if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
     navigator.serviceWorker.controller.postMessage({
       type: "SHOW_NOTIFICATION",
       payload: {
         title,
         body,
-        tag: `timeline-${Date.now()}`,
+        tag: notifTag,
         icon: "/logo.png",
       },
     });
   } else {
     try {
-      new Notification(title, { body, icon: "/logo.png" });
+      // `renotify: false` so an updated notification doesn't re-alert the
+      // user; the body/title change is enough. `tag` causes replacement.
+      new Notification(title, {
+        body,
+        tag: notifTag,
+        icon: "/logo.png",
+      } as NotificationOptions);
     } catch {
       // Notification API may not be available
     }

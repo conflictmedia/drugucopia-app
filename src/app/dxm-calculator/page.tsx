@@ -37,6 +37,8 @@ import { toast } from '@/hooks/use-toast'
 import { dextromethorphan as dxm } from '@/lib/substances/dissociatives/dextromethorphan'
 import { RedosePlanner } from '@/components/redose-planner'
 import type { DoseLog } from '@/types'
+import { ErrorBoundary, CalculatorErrorFallback } from '@/components/error-boundary'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -300,6 +302,7 @@ function DXMCalculatorContent() {
   })
   const [copied, setCopied] = useState(false)
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false)
+  const [isPlanSheetOpen, setIsPlanSheetOpen] = useState(false)
 
   // B1 — Save inputs to localStorage whenever they change so the next
   // visit restores them. Skip the very first render (initial values
@@ -608,7 +611,7 @@ function DXMCalculatorContent() {
                     <Plus className="h-3.5 w-3.5 mr-1.5" />
                     Log dose
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setIsPlanDialogOpen(true)} className="h-8 px-3 text-xs">
+                  <Button variant="outline" size="sm" onClick={() => setIsPlanSheetOpen(true)} className="h-8 px-3 text-xs min-h-[44px]">
                     <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
                     Plan redoses
                   </Button>
@@ -1117,7 +1120,29 @@ function DXMCalculatorContent() {
         </div>
       </SectionToggle>
 
-      {/* ─── Redose Planner ──────────────────────────────────────────────── */}
+      {/* ─── Redose Planner Bottom Sheet (Mobile) ─────────────────────────────── */}
+      <BottomSheet
+        open={isPlanSheetOpen}
+        onClose={() => setIsPlanSheetOpen(false)}
+        title="Plan Redoses"
+        description="Plan your redose schedule based on the calculated dose"
+        maxHeight="90dvh"
+      >
+        <RedosePlanner
+          open={true}
+          onOpenChange={() => setIsPlanSheetOpen(false)}
+          standalone={true}
+          substance={dxm}
+          baseAmount={activePlateau ? Math.round((activePlateau.minDose + activePlateau.maxDose) / 2) : 0}
+          baseUnit="mg"
+          route="oral"
+          duration={dxm.routeData?.oral?.duration ?? null}
+          notes={`Calculated via DXM Dose Calculator. Body weight: ${unit === 'lbs' ? `${weight} lbs` : `${weight} kg`} (${weightKg.toFixed(1)} kg). Plateau: ${activePlateau?.name ?? 'n/a'} (${activePlateau?.rangeMin ?? 0}–${activePlateau?.rangeMax ?? 0} mg/kg). Computed range: ${activePlateau?.minDose ?? 0}–${activePlateau?.maxDose ?? 0} mg.`}
+          logInitialDose={true}
+        />
+      </BottomSheet>
+
+      {/* ─── Redose Planner Dialog (Desktop) ───────────────────────────────── */}
       <RedosePlanner
         open={isPlanDialogOpen}
         onOpenChange={setIsPlanDialogOpen}
@@ -1147,8 +1172,7 @@ function DXMCalculatorContent() {
     </div>
   )
 }
-
-export default function DXMCalculatorPage() {
+function DXMCalculatorPageInner() {
   return (
     <Suspense
       fallback={
@@ -1162,5 +1186,13 @@ export default function DXMCalculatorPage() {
     >
       <DXMCalculatorContent />
     </Suspense>
+  )
+}
+
+export default function DXMCalculatorPage() {
+  return (
+    <ErrorBoundary name="DXMCalculator" fallback={<CalculatorErrorFallback />}>
+      <DXMCalculatorPageInner />
+    </ErrorBoundary>
   )
 }

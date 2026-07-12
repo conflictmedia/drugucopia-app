@@ -35,6 +35,8 @@ import { toast } from '@/hooks/use-toast'
 import { kratom } from '@/lib/substances/opioids/kratom'
 import { RedosePlanner } from '@/components/redose-planner'
 import type { DoseLog } from '@/types'
+import { ErrorBoundary, CalculatorErrorFallback } from '@/components/error-boundary'
+import { BottomSheet } from '@/components/ui/BottomSheet'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -369,6 +371,7 @@ function KratomCalculatorContent() {
   })
   const [copied, setCopied] = useState(false)
   const [isPlanDialogOpen, setIsPlanDialogOpen] = useState(false)
+  const [isPlanSheetOpen, setIsPlanSheetOpen] = useState(false)
 
   // B1 — Save inputs to localStorage whenever they change so the next
   // visit restores them.
@@ -652,7 +655,7 @@ function KratomCalculatorContent() {
                   setInputMode(p.mode)
                   setExtractValue(String(p.value))
                 }}
-                className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-h-[36px] ${extractNumber === p.value && inputMode === p.mode
+                className={`rounded-lg border px-3 py-2 text-xs font-medium transition-colors min-h-[44px] ${extractNumber === p.value && inputMode === p.mode
                     ? 'border-emerald-500 bg-emerald-500/10 text-emerald-400'
                     : 'border-base-300 bg-base-200/50 text-neutral-content hover:bg-base-300'
                   }`}
@@ -956,7 +959,7 @@ function KratomCalculatorContent() {
                     <Plus className="h-3.5 w-3.5 mr-1.5" />
                     Log dose
                   </Button>
-                  <Button variant="outline" size="sm" onClick={() => setIsPlanDialogOpen(true)} className="h-8 px-3 text-xs">
+                  <Button variant="outline" size="sm" onClick={() => setIsPlanSheetOpen(true)} className="h-8 px-3 text-xs min-h-[44px]">
                     <CalendarDays className="h-3.5 w-3.5 mr-1.5" />
                     Plan redoses
                   </Button>
@@ -1400,7 +1403,29 @@ function KratomCalculatorContent() {
         </div>
       </SectionToggle>
 
-      {/* ─── Redose Planner ──────────────────────────────────────────────── */}
+      {/* ─── Redose Planner Bottom Sheet (Mobile) ─────────────────────────────── */}
+      <BottomSheet
+        open={isPlanSheetOpen}
+        onClose={() => setIsPlanSheetOpen(false)}
+        title="Plan Redoses"
+        description="Plan your redose schedule based on the calculated dose"
+        maxHeight="90dvh"
+      >
+        <RedosePlanner
+          open={true}
+          onOpenChange={() => setIsPlanSheetOpen(false)}
+          standalone={true}
+          substance={kratom}
+          baseAmount={activeExtractDose}
+          baseUnit="g"
+          route="oral"
+          duration={kratom.routeData?.oral?.duration ?? null}
+          notes={`Calculated via Kratom Extract Dose Calculator. Direction: ${calcDirection === 'leaf-to-extract' ? 'leaf → extract' : 'extract → leaf'}. Extract strength: ${inputMode === 'percent' ? `${extractValue}% mitragynine` : `${extractValue}× ratio`}. Leaf equivalent: ${formatGrams(activeLeafDose)}g. Leaf baseline: ${leafBaseline}% mitragynine. ${isEnhanced ? 'Extract marked as enhanced/fortified.' : ''}`}
+          logInitialDose={true}
+        />
+      </BottomSheet>
+
+      {/* ─── Redose Planner Dialog (Desktop) ───────────────────────────────── */}
       <RedosePlanner
         open={isPlanDialogOpen}
         onOpenChange={setIsPlanDialogOpen}
@@ -1443,7 +1468,9 @@ export default function KratomCalculatorPage() {
         </div>
       }
     >
-      <KratomCalculatorContent />
+      <ErrorBoundary fallback={<CalculatorErrorFallback />} name="KratomCalculator">
+        <KratomCalculatorContent />
+      </ErrorBoundary>
     </Suspense>
   )
 }
