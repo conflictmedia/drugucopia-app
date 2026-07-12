@@ -452,6 +452,13 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const initialSyncDoneRef = useRef(false)
   const syncStatusRef = useRef<'idle' | 'connecting' | 'synced' | 'error'>('idle')
   const pushDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Session-level guard: the "Secure Sync Active" toast should fire at most
+  // once per page session, even if connectToSync re-runs (e.g. when isLoaded
+  // / reminderIsLoaded flip after hydration and the auto-connect effect
+  // re-subscribes). Without this, every snapshot listener re-attach can
+  // re-trigger the toast because markHasSynced() is only persisted after
+  // a successful *data* merge, not after an empty-room or echo snapshot.
+  const hasShownActiveToastRef = useRef(false)
 
   // Guard against feedback loop: when setDosesFromSync / setRemindersFromSync updates
   // the Zustand stores, the subscription listeners fire and would schedule another push.
@@ -747,11 +754,22 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             initialSyncDoneRef.current = true
             setSyncStatus('synced')
             setLastSyncedAt(new Date().toISOString())
-            if (isFirstEverSync) {
+            if (isFirstEverSync && !hasShownActiveToastRef.current) {
+              hasShownActiveToastRef.current = true
               toast({ title: 'Secure Sync Active', description: 'Your data is now end-to-end encrypted and syncing.' })
             }
+            // Persist "has synced" so isFirstEverSync is false on reconnects —
+            // otherwise the toast fires every time the listener re-attaches.
+            if (isFirstEverSync) markHasSynced()
             saveSyncCredentials(effectiveRId, effectivePass)
-            pushToSync()
+            // Route through pushToSyncRef so we always invoke the latest
+            // pushToSync (whose closure has the current isLoaded /
+            // reminderIsLoaded). Calling pushToSync() directly here would
+            // capture the version from when connectToSync was created —
+            // which, with the ref-based auto-connect effect, may be from
+            // before Zustand hydration (isLoaded=false), causing every
+            // push to be silently skipped.
+            pushToSyncRef.current?.()
             return
           }
 
@@ -770,6 +788,11 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             if (!loadSyncCredentials()) {
               saveSyncCredentials(effectiveRId, effectivePass)
             }
+            // An echo is still proof that we are connected and writing
+            // successfully — persist the "has synced" flag so a later
+            // listener re-attach (e.g. hydration flipping isLoaded) does
+            // not re-fire the "first ever sync" toast.
+            if (isFirstEverSync) markHasSynced()
             return
           }
 
@@ -792,7 +815,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             const isFirstSyncThisSession = !initialSyncDoneRef.current
             initialSyncDoneRef.current = true
             setSyncStatus('synced')
-            if (isFirstEverSync) {
+            if (isFirstEverSync && !hasShownActiveToastRef.current) {
+              hasShownActiveToastRef.current = true
               toast({ title: 'Secure Sync Active', description: 'Your data is now end-to-end encrypted and syncing.' })
             }
             setLastSyncedAt(new Date().toISOString())
@@ -1013,6 +1037,19 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     setPendingConflicts((prev) => prev.filter((c) => c.id !== conflictId))
   }, [])
 
+  // Keep a live ref to connectToSync so the auto-connect effect can call
+  // the latest version without re-subscribing every time connectToSync's
+  // identity changes (which happens when isLoaded / reminderIsLoaded flip
+  // after Zustand hydration). Previously, the effect had `connectToSync`
+  // in its deps, so each hydration flip would: run cleanup (unsubscribe
+  // the Firestore onSnapshot listener) → re-run the effect → call
+  // connectToSync again → attach a new listener → first snapshot arrives
+  // → "Secure Sync Active" toast fired again. Using a ref breaks that
+  // cycle: the effect runs once on mount, and the cleanup only runs on
+  // unmount.
+  const connectToSyncRef = useRef(connectToSync)
+  useEffect(() => { connectToSyncRef.current = connectToSync }, [connectToSync])
+
   // Auto-connect on load.
   // D3 — Only the room name is in localStorage (not sensitive). The
   // password is in sessionStorage, so auto-reconnect only works within
@@ -1024,7 +1061,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     if (creds) {
       setRoomId(creds.room)
       setPassword(creds.pass)
-      connectToSync(creds.room, creds.pass)
+      connectToSyncRef.current(creds.room, creds.pass)
     } else {
       // No password in sessionStorage — but maybe the room name is in
       // localStorage from a previous session. Pre-fill it so the user
@@ -1034,7 +1071,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }
     return () => { if (unsubscribeRef.current) unsubscribeRef.current() }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setRoomId, setPassword, connectToSync])
+  }, [])
 
   const contextValue = useMemo(() => ({
     syncStatus, lastSyncedAt, roomId, password, setRoomId, setPassword, connectToSync, disconnectSync, pushToSync,
