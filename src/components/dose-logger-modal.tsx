@@ -1169,8 +1169,9 @@ export function DoseLoggerModal({
           description="Record your substance use for tracking and harm reduction purposes."
           showDragHandle={true}
           maxHeight="85dvh"
+          footer={renderFormActions()}
         >
-          {renderForm()}
+          {renderFormContent()}
         </BottomSheet>
       )
     }
@@ -1182,25 +1183,28 @@ export function DoseLoggerModal({
         className="modal"
         onClose={handleClose}
       >
-        <div className="modal-box max-sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] max-w-[500px]">
-          <button
-            type="button"
-            aria-label="Close"
-            className="btn btn-circle btn-ghost tap-sm absolute right-3 top-3 h-8 w-8 min-h-0 p-0"
-            onClick={handleClose}
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <form onSubmit={onSubmit}>
+          <div className="modal-box max-sm:pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] max-w-[500px]">
+            <button
+              type="button"
+              aria-label="Close"
+              className="btn btn-circle btn-ghost tap-sm absolute right-3 top-3 h-8 w-8 min-h-0 p-0"
+              onClick={handleClose}
+            >
+              <X className="h-4 w-4" />
+            </button>
 
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold leading-none">Log a Dose</h3>
-            <p className="text-sm text-neutral-content mt-1">
-              Record your substance use for tracking and harm reduction purposes.
-            </p>
+            <div className="mb-4">
+              <h3 className="text-lg font-semibold leading-none">Log a Dose</h3>
+              <p className="text-sm text-neutral-content mt-1">
+                Record your substance use for tracking and harm reduction purposes.
+              </p>
+            </div>
+
+            {renderFormContent()}
+            {renderFormActions()}
           </div>
-
-          {renderForm()}
-        </div>
+        </form>
         <form method="dialog" className="modal-backdrop">
           <button type="button" onClick={handleClose}>close</button>
         </form>
@@ -1231,10 +1235,9 @@ export function DoseLoggerModal({
 
   return renderModal()
 
-  function renderForm() {
+  function renderFormContent() {
     return (
-      <form onSubmit={onSubmit}>
-        <div className="grid gap-4 py-2">
+      <div className="grid gap-4 py-2">
           {/* ── Quick Input Section ────────────────────────────────────── */}
           <div className="grid gap-2">
             <Label className="flex items-center gap-2">
@@ -1664,27 +1667,30 @@ export function DoseLoggerModal({
             )}
           </div>
         </div>
+    )
+  }
 
-        <div className="flex flex-col sm:flex-row gap-2 justify-end mt-4">
-          <Button type="button" variant="outline" onClick={handleClose} className="w-full sm:w-auto">
-            Cancel
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={!substanceName || !amount || parseFloat(amount) <= 0}
-            onClick={() => setIsPlanDialogOpen(true)}
-            className="w-full sm:w-auto gap-2"
-          >
-            <CalendarDays className="h-4 w-4" />
-            Plan redoses
-          </Button>
-          <Button type="submit" disabled={loading} className="w-full sm:w-auto">
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Log Dose
-          </Button>
-        </div>
-      </form>
+  function renderFormActions() {
+    return (
+      <div className="flex flex-col sm:flex-row gap-2 justify-end mt-4 pt-4 border-t border-base-300">
+        <Button type="button" variant="outline" onClick={handleClose} className="w-full sm:w-auto">
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={!substanceName || !amount || parseFloat(amount) <= 0}
+          onClick={() => setIsPlanDialogOpen(true)}
+          className="w-full sm:w-auto gap-2"
+        >
+          <CalendarDays className="h-4 w-4" />
+          Plan redoses
+        </Button>
+        <Button type="submit" disabled={loading} className="w-full sm:w-auto">
+          {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+          Log Dose
+        </Button>
+      </div>
     )
   }
 }

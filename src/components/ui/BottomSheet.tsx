@@ -15,6 +15,7 @@ interface BottomSheetProps {
   showDragHandle?: boolean
   showCloseButton?: boolean
   className?: string
+  footer?: ReactNode
 }
 
 export function BottomSheet({
@@ -27,8 +28,10 @@ export function BottomSheet({
   showDragHandle = true,
   showCloseButton = true,
   className,
+  footer,
 }: BottomSheetProps) {
   const sheetRef = useRef<HTMLDivElement>(null)
+  const dragHandleRef = useRef<HTMLDivElement>(null)
   const [dragY, setDragY] = useState(0)
   const [isDragging, setIsDragging] = useState(false)
   const startYRef = useRef(0)
@@ -38,9 +41,13 @@ export function BottomSheet({
   }, [onClose])
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    startYRef.current = e.touches[0].clientY
-    setIsDragging(true)
-  }, [])
+    // Only start dragging if touch is on the drag handle
+    const target = e.target as HTMLElement
+    if (showDragHandle && dragHandleRef.current?.contains(target)) {
+      startYRef.current = e.touches[0].clientY
+      setIsDragging(true)
+    }
+  }, [showDragHandle])
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (!isDragging) return
@@ -84,18 +91,22 @@ export function BottomSheet({
             animate={{ y: 0 }}
             exit={{ y: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className={cn('bottom-sheet', className)}
+            className={cn('bottom-sheet flex flex-col', className)}
             style={sheetStyle}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            onTouchCancel={handleTouchEnd}
             role="dialog"
             aria-modal="true"
             aria-label={title || 'Bottom sheet'}
           >
             {showDragHandle && (
-              <div className="bottom-sheet-drag" aria-hidden="true" />
+              <div
+                ref={dragHandleRef}
+                className="bottom-sheet-drag"
+                aria-hidden="true"
+                onTouchStart={handleTouchStart}
+                onTouchMove={handleTouchMove}
+                onTouchEnd={handleTouchEnd}
+                onTouchCancel={handleTouchEnd}
+              />
             )}
 
             {showCloseButton && (
@@ -110,15 +121,21 @@ export function BottomSheet({
             )}
 
             {(title || description) && (
-              <div className="mb-4 px-4">
+              <div className="mb-4 px-4 flex-shrink-0">
                 {title && <h3 className="text-lg font-semibold leading-none">{title}</h3>}
                 {description && <p className="text-sm text-neutral-content mt-1">{description}</p>}
               </div>
             )}
 
-            <div className={cn('pt-2 pb-safe max-h-[85dvh] overflow-y-auto', maxHeight && `max-h-[${maxHeight}]`)}>
+            <div className={cn('pt-2 flex-1 overflow-y-auto', maxHeight && `max-h-[${maxHeight}]`)}>
               {children}
             </div>
+
+            {footer && (
+              <div className="px-4 pb-safe pt-2 border-t border-base-300 bg-base-100/95 backdrop-blur supports-[backdrop-filter]:bg-base-100/80 flex-shrink-0">
+                {footer}
+              </div>
+            )}
           </motion.div>
         </>
       )}
