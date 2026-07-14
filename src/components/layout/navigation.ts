@@ -4,9 +4,12 @@ import {
   BarChart3,
   Calculator,
   FlaskConical,
+  History,
   Leaf,
+  PlusCircle,
   Shield,
   Shuffle,
+  Pill,
 } from "lucide-react";
 
 export interface NavItem {
@@ -15,13 +18,15 @@ export interface NavItem {
     | "interactions"
     | "track"
     | "analytics"
-    | "dxm"
-    | "kratom"
-    | "safety";
+    | "calculators"
+    | "custom-substances"
+    | "safety"
+    | "changelog"
+    | "medications";
   href: string;
   label: string;
   icon: LucideIcon;
-  section: "explore" | "track" | "tools";
+  section: "explore" | "track" | "tools" | "info";
   /**
    * DaisyUI semantic color token used for the item's icon. Inactive items
    * render the icon at ~70% opacity in this color; active items render at
@@ -72,20 +77,28 @@ export const NAV_ITEMS: NavItem[] = [
     color: "info",
   },
   {
-    id: "dxm",
-    href: "/dxm-calculator",
-    label: "DXM Calculator",
+    id: "calculators",
+    href: "/calculators",
+    label: "Calculators",
     icon: Calculator,
     section: "tools",
     color: "warning",
   },
   {
-    id: "kratom",
-    href: "/kratom-calculator",
-    label: "Kratom Calculator",
-    icon: Leaf,
-    section: "tools",
+    id: "custom-substances",
+    href: "/custom-substances",
+    label: "Custom Substances",
+    icon: PlusCircle,
+    section: "explore",
     color: "success",
+  },
+  {
+    id: "medications",
+    href: "/medications",
+    label: "Medications",
+    icon: Pill,
+    section: "track",
+    color: "info",
   },
   {
     id: "safety",
@@ -94,6 +107,14 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Shield,
     section: "explore",
     color: "error",
+  },
+  {
+    id: "changelog",
+    href: "/changelog",
+    label: "Changelog",
+    icon: History,
+    section: "info",
+    color: "info",
   },
 ];
 
@@ -104,6 +125,7 @@ export const NAV_SECTIONS: Array<{
   { title: "Explore", section: "explore" },
   { title: "Track", section: "track" },
   { title: "Tools", section: "tools" },
+  { title: "Info", section: "info" },
 ];
 
 export function isNavItemActive(item: NavItem, pathname: string) {
@@ -120,12 +142,16 @@ export function isNavItemActive(item: NavItem, pathname: string) {
       return p.startsWith("/interactions");
     case "analytics":
       return p.startsWith("/analytics");
-    case "dxm":
-      return p.startsWith("/dxm-calculator");
-    case "kratom":
-      return p.startsWith("/kratom-calculator");
+    case "calculators":
+      return p.startsWith("/calculators");
+    case "custom-substances":
+      return p.startsWith("/custom-substances");
+    case "medications":
+      return p.startsWith("/medications");
     case "safety":
       return p.startsWith("/harm-reduction");
+    case "changelog":
+      return p.startsWith("/changelog");
     default:
       return false;
   }
@@ -143,12 +169,22 @@ export function getPageTitle(pathname: string) {
       return "Track";
     case "/analytics":
       return "Analytics";
-    case "/dxm-calculator":
+    case "/calculators":
+      return "Calculators";
+    case "/custom-substances":
+      return "Custom Substances";
+    case "/medications":
+      return "Medications";
+    case "/calculators/benzo-equivalence":
+      return "Benzo Equivalence";
+    case "/calculators/dxm":
       return "DXM Calculator";
-    case "/kratom-calculator":
+    case "/calculators/kratom":
       return "Kratom Calculator";
     case "/harm-reduction":
       return "Safety";
+    case "/changelog":
+      return "Changelog";
     default:
       return "Drugucopia";
   }
