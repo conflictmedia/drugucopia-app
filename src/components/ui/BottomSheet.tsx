@@ -113,7 +113,7 @@ export function BottomSheet({
               <button
                 type="button"
                 aria-label="Close"
-                className="btn btn-circle btn-ghost absolute right-4 top-3 h-9 w-9 min-h-0 p-0 z-10"
+                className="btn btn-circle btn-ghost absolute right-3 top-2.5 h-11 w-11 min-h-11 p-0 z-10 tap-feedback-sm"
                 onClick={handleClose}
               >
                 <X className="h-5 w-5" />

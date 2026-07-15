@@ -181,6 +181,8 @@ export function getPageTitle(pathname: string) {
       return "DXM Calculator";
     case "/calculators/kratom":
       return "Kratom Calculator";
+    case "/calculators/alcohol":
+      return "Alcohol Calculator";
     case "/harm-reduction":
       return "Safety";
     case "/changelog":

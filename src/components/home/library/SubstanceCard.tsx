@@ -56,6 +56,7 @@ export const SubstanceCard = memo(function SubstanceCard({
         'card card-lift bg-base-100/80 text-base-content border border-base-300/70 shadow-sm backdrop-blur-sm',
         // Lift on hover, but only on devices that actually have hover
         'transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md',
+        'active:border-primary/40',
         // Make the whole card a button
         'cursor-pointer text-left',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',

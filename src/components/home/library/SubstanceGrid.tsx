@@ -65,10 +65,10 @@ export function SubstanceGrid({
           <button
             type="button"
             onClick={onShowMore}
-            className="btn btn-outline gap-2"
+            className="btn btn-outline btn-block sm:btn-auto gap-2 tap-feedback border-base-300/80 hover:border-primary/60 hover:bg-primary/5 transition-all"
           >
             Show more
-            <span className="badge badge-sm badge-outline">
+            <span className="badge badge-sm badge-outline border-current/40">
               {remaining} remaining
             </span>
           </button>

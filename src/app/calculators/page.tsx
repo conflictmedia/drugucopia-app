@@ -1,11 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { Calculator, Pill, Brain, Leaf } from 'lucide-react';
+import { Calculator, Pill, Brain, Leaf, Wine } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 
 const calculators = [
+  {
+    href: '/calculators/alcohol',
+    name: 'Alcohol Calculator',
+    description: 'Convert shots to grams of pure ethanol across international standard drinks',
+    icon: Wine
+  },
   {
     href: '/calculators/benzo-equivalence',
     name: 'Benzodiazepine Equivalence',
@@ -37,7 +43,7 @@ export default function CalculatorsPage() {
             <h3 className="text-lg font-semibold mb-2">{calc.name}</h3>
             <p className="text-base-content/70 text-sm mb-4">{calc.description}</p>
             <Link href={calc.href}>
-              <Button intent="primary" className="w-full">Open Calculator</Button>
+              <Button variant="default" className="w-full">Open Calculator</Button>
             </Link>
           </Card>
         ))}
