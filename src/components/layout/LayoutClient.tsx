@@ -13,6 +13,7 @@ import { ReminderProvider } from '@/components/reminder-provider'
 import { CommandPalette } from '@/components/command-palette'
 import { DoseLoggerModal } from '@/components/dose-logger-modal'
 import { OnboardingTour } from '@/components/onboarding-tour'
+import { UpdateCheckPopupWrapper } from '@/components/update-check-popup-wrapper'
 import { useUIStore } from '@/store/ui-store'
 
 interface LayoutClientProps {
@@ -226,6 +227,7 @@ export function LayoutClient({ children }: LayoutClientProps) {
               setOnboardingCompleted(true)
             }}
           />
+          <UpdateCheckPopupWrapper />
         </div>
       </ReminderProvider>
     </SyncProvider>
