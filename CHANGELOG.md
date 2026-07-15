@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.3] - 2026-07-15
+
+### Fixed
+- Update Checker should work now
+- Markdown in the changelog should display correctly now
+
 ## [0.1.2] - 2026-07-14
 
 ### Changed
