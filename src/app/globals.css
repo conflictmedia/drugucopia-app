@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 /* ───────────────────────────────────────────────────────────────────
    daisyUI 5 plugin registration
@@ -645,7 +646,8 @@
   }
 
   .safe-area-inset {
-    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+      env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
   }
 
   .scrollbar-none {
@@ -766,7 +768,9 @@
      on click. The transition is intentionally short (60ms in, 120ms out)
      so it feels snappy like a native Android ripple. */
   .tap-feedback {
-    transition: transform 0.12s ease-out, background-color 0.12s ease-out;
+    transition:
+      transform 0.12s ease-out,
+      background-color 0.12s ease-out;
   }
 
   .tap-feedback:active {
@@ -785,7 +789,9 @@
   /* Smaller variant for tight chips/badges — less dramatic scale so
      the chip text doesn't visibly jitter. */
   .tap-feedback-sm {
-    transition: transform 0.12s ease-out, background-color 0.12s ease-out;
+    transition:
+      transform 0.12s ease-out,
+      background-color 0.12s ease-out;
   }
 
   .tap-feedback-sm:active {
@@ -1053,7 +1059,10 @@
     line-height: 1;
     color: var(--color-neutral-content);
     border-radius: 0.625rem;
-    transition: color 0.18s ease-out, background-color 0.18s ease-out, transform 0.12s ease-out;
+    transition:
+      color 0.18s ease-out,
+      background-color 0.18s ease-out,
+      transform 0.12s ease-out;
     position: relative;
   }
 
