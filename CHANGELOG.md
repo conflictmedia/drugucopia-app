@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.1.4] - 2026-07-15
+
+### Changed
+- horizontal padding to Safety page
+
 ## [0.1.3] - 2026-07-15
 
 ### Fixed
