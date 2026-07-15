@@ -30,18 +30,19 @@ export function UpdateCheckPopup({
 
   useEffect(() => {
     setMounted(true)
+
+    if (!latestVersion || latestVersion === currentVersion) return
+
     const lastChecked = getLastCheckedVersion()
     const lastCheckTime = getLastCheckTime()
 
-    // Check if we should show the popup:
-    // 1. Never checked before, OR
-    // 2. New version available AND hasn't been dismissed for this version, OR
-    // 3. It's been more than 24 hours since last check
-    const shouldCheck =
-      !lastChecked ||
-      (lastChecked !== latestVersion && lastCheckTime && Date.now() - lastCheckTime > CHECK_INTERVAL_MS)
+    const neverSeenThisVersion = lastChecked !== latestVersion
+    const remindLaterCooldownElapsed =
+      lastChecked === latestVersion &&
+      lastCheckTime !== null &&
+      Date.now() - lastCheckTime > CHECK_INTERVAL_MS
 
-    if (shouldCheck && latestVersion !== currentVersion) {
+    if (neverSeenThisVersion || remindLaterCooldownElapsed) {
       setIsOpen(true)
     }
   }, [currentVersion, latestVersion])

@@ -45,8 +45,6 @@ export function UpdateCheckPopupWrapper() {
           headers: {
             Accept: 'application/vnd.github.v3+json',
           },
-          // Cache for 1 hour to avoid rate limiting
-          next: { revalidate: 3600 },
         })
 
         if (!response.ok) {
