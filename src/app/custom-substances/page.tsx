@@ -169,7 +169,7 @@ export default function CustomSubstancesPage() {
             Manage your personal substance definitions with dose ranges and durations.
           </p>
         </div>
-        <Button intent="primary" iconOnly={false} onClick={() => setShowForm(true)}>
+        <Button variant="default" onClick={() => setShowForm(true)}>
           <Plus className="w-4 h-4 mr-2" />
           Add Custom Substance
         </Button>
@@ -228,11 +228,9 @@ export default function CustomSubstancesPage() {
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="font-medium capitalize">{route}</h4>
                     <Button
-                      intent="ghost"
-                      size="sm"
-                      iconOnly
-                      onClick={() => removeRoute(route)}
                       variant="ghost"
+                      size="sm"
+                      onClick={() => removeRoute(route)}
                     >
                       <X className="w-4 h-4 text-error" />
                     </Button>
@@ -305,7 +303,7 @@ export default function CustomSubstancesPage() {
                   <Button
                     key={route}
                     type="button"
-                    intent="outline"
+                    variant="outline"
                     size="sm"
                     onClick={() => addRoute(route)}
                     className="gap-1"
@@ -318,10 +316,10 @@ export default function CustomSubstancesPage() {
             </div>
 
             <div className="flex gap-3 pt-4 border-t">
-              <Button intent="primary" type="submit">
+              <Button variant="default" type="submit">
                 {editingId ? 'Save Changes' : 'Add Substance'}
               </Button>
-              <Button intent="ghost" type="button" onClick={resetForm}>
+              <Button variant="ghost" type="button" onClick={resetForm}>
                 Cancel
               </Button>
             </div>
@@ -360,17 +358,17 @@ export default function CustomSubstancesPage() {
                 </div>
                 <div className="flex gap-2 shrink-0">
                   <Button
-                    intent="ghost"
+                    variant="ghost"
                     size="sm"
-                    iconOnly
+                    className="btn-square"
                     onClick={() => startEdit(sub)}
                   >
                     <Edit className="w-4 h-4" />
                   </Button>
                   <Button
-                    intent="danger"
+                    variant="destructive"
                     size="sm"
-                    iconOnly
+                    className="btn-square"
                     onClick={() => deleteSubstance(sub.id)}
                   >
                     <Trash className="w-4 h-4" />

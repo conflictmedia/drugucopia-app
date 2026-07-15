@@ -68,7 +68,8 @@ export function InteractionPairCard({ result }: InteractionPairCardProps) {
       className={cn(
         'card border transition-all hover:shadow-md interaction-card',
         config.borderColor,
-        config.bgColor
+        config.bgColor,
+        'content-visibility-auto contain-intrinsic-size-[200px]'
       )}
     >
       <div className="card-body p-4">

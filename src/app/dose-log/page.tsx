@@ -1,10 +1,12 @@
 'use client'
 
-import { Suspense, useMemo, useState } from 'react'
+import { Suspense, useMemo, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
+import { useRouter } from 'next/navigation'
 import { Bell, Activity, History, BarChart3, RotateCcw } from 'lucide-react'
 import { useDoseStore } from '@/store/dose-store'
 import { useReminderStore } from '@/store/reminder-store'
+import { PullToRefresh } from '@/components/ui/PullToRefresh'
 
 // Lazy-load heavy client-only components
 const DoseHistory = dynamic(
@@ -131,7 +133,7 @@ function TabButton({
       role="tab"
       aria-selected={active}
       onClick={onClick}
-      className={`tab tab-bordered gap-1.5 ${active ? 'tab-active' : ''}`}
+      className={`tab tab-bordered gap-1.5 min-h-[44px] ${active ? 'tab-active text-primary' : 'text-base-content'}`}
     >
       <Icon className="h-4 w-4" />
       <span>{tab.label}</span>
@@ -227,35 +229,42 @@ function InsightsTab() {
 
 function DoseLogPageContent() {
   const [tab, setTab] = useState<TrackTab>('session')
+  const router = useRouter()
+
+  const handleRefresh = useCallback(async () => {
+    router.refresh()
+  }, [router])
 
   return (
-    <div className="container mx-auto px-4 py-6 lg:px-6 lg:py-10">
-      <div className="mx-auto max-w-5xl space-y-6">
-        <TrackHero />
+    <PullToRefresh onRefresh={handleRefresh} threshold={60}>
+      <div className="container mx-auto px-4 py-6 lg:px-6 lg:py-10">
+        <div className="mx-auto max-w-5xl space-y-6">
+          <TrackHero />
 
-        {/* Sync conflicts surface above the tabs so they can't be missed. */}
-        <SyncConflicts />
+          {/* Sync conflicts surface above the tabs so they can't be missed. */}
+          <SyncConflicts />
 
-        {/* Tab bar — single source of truth for navigation within Track. */}
-        <div
-          role="tablist"
-          aria-label="Track sections"
-          className="tabs tabs-boxed w-full justify-center overflow-x-auto border border-base-300 bg-base-200/60"
-        >
-          {TABS.map((t) => (
-            <TabButton key={t.id} tab={t} active={tab === t.id} onClick={() => setTab(t.id)} />
-          ))}
-        </div>
+          {/* Tab bar — single source of truth for navigation within Track. */}
+          <div
+            role="tablist"
+            aria-label="Track sections"
+            className="tabs tabs-boxed w-full justify-center overflow-x-auto border border-base-300 bg-base-200/60"
+          >
+            {TABS.map((t) => (
+              <TabButton key={t.id} tab={t} active={tab === t.id} onClick={() => setTab(t.id)} />
+            ))}
+          </div>
 
-        <div role="tabpanel">
-          {tab === 'session' && <ActiveSessionTab />}
-          {tab === 'history' && <DoseHistory />}
-          {tab === 'reminders' && <RemindersTab />}
-          {tab === 'timeline-notifications' && <TimelineNotificationsTab />}
-          {tab === 'insights' && <InsightsTab />}
+          <div role="tabpanel">
+            {tab === 'session' && <ActiveSessionTab />}
+            {tab === 'history' && <DoseHistory />}
+            {tab === 'reminders' && <RemindersTab />}
+            {tab === 'timeline-notifications' && <TimelineNotificationsTab />}
+            {tab === 'insights' && <InsightsTab />}
+          </div>
         </div>
       </div>
-    </div>
+    </PullToRefresh>
   )
 }
 

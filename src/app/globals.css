@@ -611,6 +611,9 @@
     max-width: 100vw;
     overflow-x: hidden;
     background: transparent !important;
+    /* WebView tuning: prevent overscroll bounce and enable smooth touch scrolling */
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
   }
 
   * {
@@ -648,6 +651,11 @@
   .safe-area-inset {
     padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
       env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  }
+
+  /* Keyboard inset handling for virtual keyboard */
+  .keyboard-inset {
+    padding-bottom: env(keyboard-inset-height, 0px);
   }
 
   .scrollbar-none {
@@ -1252,6 +1260,16 @@
     }
     100% {
       background-position: 200% 0;
+    }
+  }
+
+  /* ─── Reduced motion: respect user preference for minimal animation ─── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
     }
   }
 }

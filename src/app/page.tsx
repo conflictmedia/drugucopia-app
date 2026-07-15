@@ -1,5 +1,9 @@
-import { Suspense } from 'react'
+'use client'
+
+import { Suspense, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { HomeContent } from '@/components/home/home-content'
+import { PullToRefresh } from '@/components/ui/PullToRefresh'
 
 function HomeLoading() {
   return (
@@ -13,9 +17,17 @@ function HomeLoading() {
 }
 
 export default function Home() {
+  const router = useRouter()
+
+  const handleRefresh = useCallback(async () => {
+    router.refresh()
+  }, [router])
+
   return (
     <Suspense fallback={<HomeLoading />}>
-      <HomeContent />
+      <PullToRefresh onRefresh={handleRefresh} threshold={60}>
+        <HomeContent />
+      </PullToRefresh>
     </Suspense>
   )
 }
