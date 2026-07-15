@@ -83,6 +83,10 @@ jobs:
           ndk-version: r27c
           cache-key: android-sdk
 
+      - name: Install build-tools 29.0.3 (for signing)
+        run: |
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "build-tools;29.0.3"
+
       - name: Install dependencies
         run: npm install --legacy-peer-deps
 
