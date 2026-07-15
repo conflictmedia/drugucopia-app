@@ -1,27 +1,43 @@
 #!/usr/bin/env bash
 # ──────────────────────────────────────────────────────────────────────────────
-# Android dev/build wrapper for Drugucopia Tauri app
+# Android dev/build wrapper for Drugucopia's Tauri app.
 #
-# Auto-detects the Android NDK and sets CARGO_TARGET_*_LINKER env vars
-# so Cargo uses the correct cross-linker instead of /usr/bin/ld.
+# The project supports physical ARM Android devices only:
+#   - aarch64 / arm64-v8a
+#   - armv7 / armeabi-v7a
+#
+# Linkers are provided to Cargo through process-local environment variables.
+# No machine-specific paths are written to src-tauri/.cargo/config.toml.
 #
 # Usage:
-#   bash scripts/android.sh dev        # build & run on device/emulator
-#   bash scripts/android.sh build      # build release APK
+#   bash scripts/android.sh dev          # build and run on a device
+#   bash scripts/android.sh build        # build an ARM release APK
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 ACTION="${1:-dev}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+EXTRA_ARGS=("$@")
+
+case "$ACTION" in
+  dev|build) ;;
+  *) echo "[android] Unknown action: $ACTION (use 'dev' or 'build')" >&2; exit 1 ;;
+esac
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
-info()  { echo -e "${CYAN}[android]${NC} $*"; }
-ok()    { echo -e "${GREEN}[android]${NC} $*"; }
-die()   { echo -e "${RED}[android]${NC} $*" >&2; exit 1; }
+info() { echo -e "${CYAN}[android]${NC} $*"; }
+ok()   { echo -e "${GREEN}[android]${NC} $*"; }
+die()  { echo -e "${RED}[android]${NC} $*" >&2; exit 1; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+RUST_TARGETS=(aarch64-linux-android armv7-linux-androideabi)
 
 # ─── 1. Find Android NDK ─────────────────────────────────────────────────────
 info "Looking for Android NDK..."
@@ -59,8 +75,7 @@ if [ -z "$NDK_PATH" ]; then
   done
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOCAL_PROPS="$SCRIPT_DIR/../src-tauri/gen/android/local.properties"
+LOCAL_PROPS="$PROJECT_ROOT/src-tauri/gen/android/local.properties"
 if [ -z "$NDK_PATH" ] && [ -f "$LOCAL_PROPS" ]; then
   NDK_PATH=$(grep -oP '(?<=ndk\.dir=).*' "$LOCAL_PROPS" 2>/dev/null | head -1 || true)
   if [ -n "$NDK_PATH" ] && [ ! -d "$NDK_PATH" ]; then
@@ -81,7 +96,7 @@ fi
 
 ok "NDK: $NDK_PATH"
 
-# ─── 2. Detect host tag ──────────────────────────────────────────────────────
+# ─── 2. Detect host toolchain ─────────────────────────────────────────────────
 case "$(uname -s)" in
   Linux)   HOST_TAG="linux-x86_64" ;;
   Darwin)  HOST_TAG="darwin-x86_64" ;;
@@ -96,7 +111,7 @@ fi
 
 ok "Toolchain: $TOOLCHAIN"
 
-# ─── 3. Detect API level ─────────────────────────────────────────────────────
+# ─── 3. Detect API level ──────────────────────────────────────────────────────
 API_LEVEL=""
 for level in 34 33 32 31 30 29 28; do
   if [ -f "$TOOLCHAIN/bin/aarch64-linux-android${level}-clang" ]; then
@@ -104,6 +119,7 @@ for level in 34 33 32 31 30 29 28; do
     break
   fi
 done
+
 if [ -z "$API_LEVEL" ]; then
   API_LEVEL=33
   info "Defaulting to API level $API_LEVEL"
@@ -111,80 +127,63 @@ else
   ok "API level: $API_LEVEL"
 fi
 
-# ─── 4. Install Rust targets ─────────────────────────────────────────────────
-info "Checking Rust Android targets..."
-for target in aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android; do
-  if ! rustup target list --installed 2>/dev/null | grep -q "$target"; then
+# ─── 4. Check only the supported Rust targets ────────────────────────────────
+command -v rustup >/dev/null 2>&1 || die "rustup is required but was not found"
+
+info "Checking ARM Rust targets..."
+for target in "${RUST_TARGETS[@]}"; do
+  if ! rustup target list --installed 2>/dev/null | grep -qx "$target"; then
     info "Installing $target..."
-    rustup target add "$target" 2>/dev/null || true
+    rustup target add "$target"
   fi
 done
-ok "Rust targets ready"
+ok "ARM Rust targets ready"
 
-# ─── 5. Set Cargo linker env vars ────────────────────────────────────────────
+# ─── 5. Set process-local Cargo linker variables ─────────────────────────────
 export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/aarch64-linux-android${API_LEVEL}-clang"
 export CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER="$TOOLCHAIN/bin/armv7a-linux-androideabi${API_LEVEL}-clang"
-export CARGO_TARGET_I686_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/i686-linux-android${API_LEVEL}-clang"
-export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$TOOLCHAIN/bin/x86_64-linux-android${API_LEVEL}-clang"
 
-ok "Linker env vars set"
+[ -x "$CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER" ] || die "ARM64 linker not found: $CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER"
+[ -x "$CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER" ] || die "ARMv7 linker not found: $CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER"
 
-# ─── 6. Write .cargo/config.toml as fallback ──────────────────────────────────
-CARGO_CFG_DIR="$SCRIPT_DIR/../src-tauri/.cargo"
-CARGO_CFG="$CARGO_CFG_DIR/config.toml"
-mkdir -p "$CARGO_CFG_DIR"
-cat > "$CARGO_CFG" <<EOF
-# Auto-generated by scripts/android.sh
-[target.aarch64-linux-android]
-linker = "${CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER}"
+ok "ARM linker environment configured"
 
-[target.armv7-linux-androideabi]
-linker = "${CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER}"
-
-[target.i686-linux-android]
-linker = "${CARGO_TARGET_I686_LINUX_ANDROID_LINKER}"
-
-[target.x86_64-linux-android]
-linker = "${CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER}"
-EOF
-
-# ─── 7. Clean stale artifacts ────────────────────────────────────────────────
-for arch in armv7-linux-androideabi aarch64-linux-android i686-linux-android x86_64-linux-android; do
-  rm -f "$SCRIPT_DIR/../src-tauri/target/$arch/debug/deps/libdrugucopia_lib"*.so 2>/dev/null || true
-done
-
-# ─── 8. Detect LAN IP for device access ──────────────────────────────────────
-# 'serve' listens on 0.0.0.0 by default. The Android device reaches it
-# via the host's LAN IP, which Tauri rewrites into the devUrl.
-LAN_IP=""
-if command -v ip &>/dev/null; then
-  LAN_IP=$(ip route get 1 2>/dev/null | grep -oP 'src \K\S+' | head -1 || true)
-elif command -v ifconfig &>/dev/null; then
-  LAN_IP=$(ifconfig 2>/dev/null | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -1 || true)
-fi
-
-if [ -n "$LAN_IP" ]; then
-  ok "LAN IP: $LAN_IP"
-  export TAURI_DEV_HOST="$LAN_IP"
-else
-  info "Could not auto-detect LAN IP."
-  info "If the app doesn't load on device, set it manually:"
-  info "  export TAURI_DEV_HOST=192.168.x.x"
-fi
-
-# ─── 9. Run Tauri ────────────────────────────────────────────────────────────
-cd "$SCRIPT_DIR/.."
+cd "$PROJECT_ROOT"
 
 case "$ACTION" in
   dev)
-    info "Starting tauri android dev..."
-    npx tauri android dev
+    # Development-only recovery for stale native libraries. Release artifacts
+    # are intentionally left untouched so Cargo can reuse them.
+    for target in "${RUST_TARGETS[@]}"; do
+      rm -f "$PROJECT_ROOT/src-tauri/target/$target/debug/deps/libdrugucopia_lib"*.so 2>/dev/null || true
+    done
+
+    # A physical device reaches the frontend dev server through the host's LAN
+    # address. This discovery is not needed for release builds.
+    LAN_IP=""
+    if command -v ip >/dev/null 2>&1; then
+      LAN_IP=$(ip route get 1 2>/dev/null | grep -oP 'src \K\S+' | head -1 || true)
+    elif command -v ifconfig >/dev/null 2>&1; then
+      LAN_IP=$(ifconfig 2>/dev/null | grep 'inet ' | grep -v 127.0.0.1 | awk '{print $2}' | head -1 || true)
+    fi
+
+    if [ -n "$LAN_IP" ]; then
+      ok "LAN IP: $LAN_IP"
+      export TAURI_DEV_HOST="$LAN_IP"
+    else
+      info "Could not auto-detect LAN IP. Set TAURI_DEV_HOST manually if the device cannot reach the app."
+    fi
+
+    info "Starting Tauri Android development build..."
+    npx tauri android dev "${EXTRA_ARGS[@]}"
     ;;
+
   build)
-    info "Building release APK..."
-    npx tauri android build
-    ;;
-  *)
-    die "Unknown action: $ACTION  (use 'dev' or 'build')"
+    info "Building release APK for ARM64 and ARMv7..."
+    npx tauri android build \
+      --apk \
+      --target aarch64 \
+      --target armv7 \
+      "${EXTRA_ARGS[@]}"
     ;;
 esac

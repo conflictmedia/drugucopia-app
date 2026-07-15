@@ -53,13 +53,13 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+          targets: aarch64-linux-android,armv7-linux-androideabi
 
       - name: Setup Rust build cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          shared-key: android-r27c-all-abis
+          shared-key: android-r27c-arm
           cache-on-failure: true
 
       - name: Install build-tools 29.0.3 (for signing)
@@ -73,7 +73,7 @@ jobs:
         run: npm run build
 
       - name: Build Android APK
-        run: bash scripts/android.sh build
+        run: bash scripts/android.sh build --ci
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
