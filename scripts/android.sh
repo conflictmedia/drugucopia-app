@@ -183,7 +183,7 @@ case "$ACTION" in
     npx tauri android build \
       --apk \
       --target aarch64 \
-      --target armv7 \
+#      --target armv7 \
       "${EXTRA_ARGS[@]}"
     ;;
 esac

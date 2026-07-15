@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5] - 2026-07-15
+
+### Changed
+- More build settings for speed of build
+
+### Fixed
+- Duration Interpolation warning wrongly applied to Custom Substances
+
 ## [0.1.4] - 2026-07-15
 
 ### Added

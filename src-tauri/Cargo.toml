@@ -1,6 +1,6 @@
 [package]
 name = "drugucopia"
-version = "0.2.0"
+version = "0.1.5"
 description = "Drugucopia - Dose Logger and Substance Resources"
 authors = ["conflictmedia"]
 edition = "2021"
@@ -23,3 +23,7 @@ tauri-plugin-store = "2"
 # JNI for Android ongoing notifications (unswipeable)
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
+
+[target.aarch64-linux-android]
+linker = "lld"
+rustflags = ["-C", "link-arg=-fuse-ld=lld"]
