@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type MouseEvent } from 'react'
 import { X, Github, ArrowUpRight, Bell } from 'lucide-react'
-import Link from 'next/link'
 import { cn } from '@/lib/utils'
+import { isTauri } from '@/lib/tauri-bridge'
 
 const STORAGE_KEY = 'drugucopia-last-checked-version'
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000 // 24 hours
@@ -57,6 +57,26 @@ export function UpdateCheckPopup({
     // Just update check time, don't mark version as seen
     setIsOpen(false)
     setLastCheckTime(Date.now())
+  }
+
+  const handleOpenGithub = async (event: MouseEvent<HTMLAnchorElement>) => {
+    // A normal target="_blank" link stays inside the Android WebView. Use
+    // Tauri's opener plugin so Android delegates the URL to the user's
+    // default browser. Keep native anchor behavior for the regular web app.
+    if (!isTauri()) {
+      handleClose()
+      return
+    }
+
+    event.preventDefault()
+
+    try {
+      const { openUrl } = await import('@tauri-apps/plugin-opener')
+      await openUrl(releaseUrl)
+      handleClose()
+    } catch (error) {
+      console.error('Failed to open the GitHub release in the browser:', error)
+    }
   }
 
   if (!mounted || !isOpen) return null
@@ -114,17 +134,17 @@ export function UpdateCheckPopup({
             <button onClick={handleLater} className="btn btn-ghost">
               Remind Me Later
             </button>
-            <Link
+            <a
               href={releaseUrl}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={handleClose}
+              onClick={handleOpenGithub}
               className={cn('btn btn-primary', 'flex items-center gap-2')}
             >
               <Github className="h-4 w-4" />
               View on GitHub
               <ArrowUpRight className="h-4 w-4" />
-            </Link>
+            </a>
           </div>
         </div>
       </div>

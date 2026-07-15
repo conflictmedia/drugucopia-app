@@ -230,7 +230,7 @@ function HarmReductionContent() {
   return (
     <div className="min-h-screen flex flex-col">
       {/* ── Unified Content ── */}
-      <div className="container mx-auto py-6 lg:py-10 max-w-5xl flex-1">
+      <div className="container mx-auto max-w-5xl flex-1 px-4 py-6 lg:px-6 lg:py-10">
         {/* Hero */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-3">

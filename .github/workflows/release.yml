@@ -40,12 +40,27 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
+      - name: Setup Gradle cache
+        uses: gradle/actions/setup-gradle@v6
+
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
           api-level: 34
           ndk-version: r27c
           cache-key: android-sdk
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Setup Rust build cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          shared-key: android-r27c-all-abis
+          cache-on-failure: true
 
       - name: Install build-tools 29.0.3 (for signing)
         run: |
