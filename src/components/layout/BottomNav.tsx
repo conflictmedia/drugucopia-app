@@ -1,14 +1,22 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { FlaskConical, Activity, BarChart3, Shield } from 'lucide-react'
+import { FlaskConical, Activity, BarChart3, Shield, Menu } from 'lucide-react'
 import { NAV_ITEMS, isNavItemActive } from './navigation'
 import { cn } from '@/lib/utils'
 
-export function BottomNav() {
+interface BottomNavProps {
+  /** Fired when the user taps the "More" button to open the full nav drawer. */
+  onMoreClick?: () => void
+}
+
+export function BottomNav({ onMoreClick }: BottomNavProps) {
   const pathname = usePathname()
 
-  const bottomNavIds = ['library', 'track', 'analytics', 'safety']
+  // Keep the four most-used destinations as primary tabs; everything
+  // else (Calculators, Custom Substances, Medications, Changelog, …)
+  // lives behind the "More" button which opens the drawer.
+  const bottomNavIds = ['library', 'track', 'analytics', 'safety'] as const
 
   return (
     <nav
@@ -16,7 +24,7 @@ export function BottomNav() {
       role="navigation"
       aria-label="Main navigation"
     >
-      {NAV_ITEMS.filter(item => bottomNavIds.includes(item.id)).map((item) => {
+      {NAV_ITEMS.filter(item => bottomNavIds.includes(item.id as typeof bottomNavIds[number])).map((item) => {
         const isActive = isNavItemActive(item, pathname)
         const Icon = item.icon
 
@@ -36,6 +44,19 @@ export function BottomNav() {
           </a>
         )
       })}
+
+      {/* "More" button — opens the drawer (AppSidebar) which lists
+          every nav item including Calculators, Custom Substances,
+          Medications, Interactions, and Changelog. */}
+      <button
+        type="button"
+        className={cn('mobile-nav-item')}
+        onClick={onMoreClick}
+        aria-label="More navigation"
+      >
+        <Menu className="h-5 w-5" aria-hidden="true" />
+        <span>More</span>
+      </button>
     </nav>
   )
 }

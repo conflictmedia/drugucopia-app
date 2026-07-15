@@ -201,7 +201,7 @@ export function SubstanceSearch({
         onKeyDown={handleKeyDown}
         className={cn(
           'w-full bg-base-100 pl-9 pr-10 shadow-none',
-          mobile ? 'h-10 text-sm' : 'h-10',
+          mobile ? 'h-11 text-sm' : 'h-10',
         )}
       />
 

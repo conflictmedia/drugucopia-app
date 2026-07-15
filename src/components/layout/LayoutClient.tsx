@@ -12,6 +12,8 @@ import { SyncProvider } from '@/contexts/sync-context'
 import { ReminderProvider } from '@/components/reminder-provider'
 import { CommandPalette } from '@/components/command-palette'
 import { DoseLoggerModal } from '@/components/dose-logger-modal'
+import { OnboardingTour } from '@/components/onboarding-tour'
+import { UpdateCheckPopupWrapper } from '@/components/update-check-popup-wrapper'
 import { useUIStore } from '@/store/ui-store'
 
 interface LayoutClientProps {
@@ -26,13 +28,44 @@ export function LayoutClient({ children }: LayoutClientProps) {
     if (typeof window === 'undefined') return false
     return window.localStorage.getItem('drugucopia-sidebar-expanded') === 'true'
   })
-  const { doseLoggerOpen, doseLoggerPreselect, closeDoseLogger } = useUIStore()
+  const { doseLoggerOpen, doseLoggerPreselect, closeDoseLogger, showOnboardingTour, setOnboardingCompleted } = useUIStore()
   const mounted = useSyncExternalStore(
     () => () => undefined,
     () => true,
     () => false,
   )
   const [isMobile, setIsMobile] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
+
+  // Onboarding tour: auto-open on first visit (when the localStorage
+  // flag `drugucopia-tour-complete` is unset). Re-triggerable via the
+  // `showOnboardingTour()` store action (Ctrl+Shift+O shortcut below),
+  // which sets `showOnboarding` directly inside its keydown handler.
+  useEffect(() => {
+    try {
+      const done = window.localStorage.getItem('drugucopia-tour-complete') === 'true'
+      setOnboardingCompleted(done)
+      if (!done) {
+        const t = window.setTimeout(() => setShowOnboarding(true), 1200)
+        return () => window.clearTimeout(t)
+      }
+    } catch {
+      /* ignore */
+    }
+  }, [setOnboardingCompleted])
+
+  // Ctrl+Shift+O keyboard shortcut to re-open the onboarding tour.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'O' || e.key === 'o')) {
+        e.preventDefault()
+        showOnboardingTour()
+        setShowOnboarding(true)
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [showOnboardingTour])
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768)
@@ -123,7 +156,7 @@ export function LayoutClient({ children }: LayoutClientProps) {
                   {children}
                 </main>
 
-                <BottomNav />
+                <BottomNav onMoreClick={() => setDrawerOpen(true)} />
               </div>
 
               <div className="drawer-side z-40 pb-[calc(env(safe-area-inset-bottom,0px)+64px)]">
@@ -187,6 +220,14 @@ export function LayoutClient({ children }: LayoutClientProps) {
           <CommandPalette />
           {!isMobile && <VisualizerControls />}
           <Toaster />
+          <OnboardingTour
+            isOpen={showOnboarding}
+            onClose={() => {
+              setShowOnboarding(false)
+              setOnboardingCompleted(true)
+            }}
+          />
+          <UpdateCheckPopupWrapper />
         </div>
       </ReminderProvider>
     </SyncProvider>

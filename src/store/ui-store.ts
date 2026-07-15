@@ -11,6 +11,13 @@ interface UIState {
   openDoseLogger: (preselect?: UIState["doseLoggerPreselect"]) => void;
   closeDoseLogger: () => void;
 
+  // Onboarding tour state. The tour auto-opens on first visit (when
+  // localStorage flag `drugucopia-tour-complete` is unset) and can be
+  // re-triggered from the Help menu / Ctrl+Shift+O keyboard shortcut.
+  onboardingCompleted: boolean;
+  showOnboardingTour: () => void;
+  setOnboardingCompleted: (done: boolean) => void;
+
   // A1 — Favorite / pinned substances for one-tap logging.
   // Stored as a minimal denormalized snapshot so the chip row renders
   // without looking up the substance DB on every render. The user pins
@@ -72,6 +79,34 @@ export const useUIStore = create<UIState>((set, get) => ({
 
   closeDoseLogger: () => {
     set({ doseLoggerOpen: false, doseLoggerPreselect: undefined });
+  },
+
+  // Onboarding tour state. Auto-opens on first visit; can be re-triggered
+  // via showOnboardingTour() (called from Ctrl+Shift+O shortcut in
+  // LayoutClient). Persisted to localStorage key `drugucopia-tour-complete`.
+  onboardingCompleted: false,
+  showOnboardingTour: () => {
+    // The OnboardingTour component listens for this flag being cleared
+    // and re-opens. We do this by clearing the localStorage flag and
+    // toggling a state field that the component re-renders on.
+    try {
+      window.localStorage.removeItem("drugucopia-tour-complete");
+    } catch {
+      /* ignore */
+    }
+    set({ onboardingCompleted: false });
+  },
+  setOnboardingCompleted: (done) => {
+    try {
+      if (done) {
+        window.localStorage.setItem("drugucopia-tour-complete", "true");
+      } else {
+        window.localStorage.removeItem("drugucopia-tour-complete");
+      }
+    } catch {
+      /* ignore */
+    }
+    set({ onboardingCompleted: done });
   },
 
   // A1 — start empty on both server and client to avoid hydration

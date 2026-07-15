@@ -66,17 +66,17 @@ export function HomeContent() {
   }, [searchParams, selectedSubstance])
 
   const handleBackFromDetail = useCallback(() => {
-    router.push(pathname)
-  }, [router, pathname])
+    window.history.pushState(null, '', pathname)
+  }, [pathname])
 
   const handleCategoryClickFromDetail = useCallback(
     (category: SubstanceCategory) => {
       setSelectedSubstance(null)
       lastProcessedSubstanceRef.current = null
       setSelectedCategory(category)
-      router.push(pathname)
+      window.history.pushState(null, '', pathname)
     },
-    [router, pathname],
+    [pathname],
   )
 
   const [visibleCount, setVisibleCount] = useState(() => {
@@ -112,17 +112,18 @@ export function HomeContent() {
     (substance: Substance) => {
       setSelectedSubstance(substance)
       lastProcessedSubstanceRef.current = substance.id
-      router.push(`${pathname}?substance=${substance.id}`)
+      // Use pushState instead of router.push to avoid full page reload in static export
+      window.history.pushState(null, '', `${pathname}?substance=${substance.id}`)
     },
-    [router, pathname],
+    [pathname],
   )
 
   const handleCategoryChange = useCallback(
     (cat: SubstanceCategory | 'all') => {
       setSelectedCategory(cat)
-      if (searchParams.toString()) router.push(pathname)
+      if (searchParams.toString()) window.history.pushState(null, '', pathname)
     },
-    [searchParams, router, pathname],
+    [searchParams, pathname],
   )
 
   useEffect(() => {

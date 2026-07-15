@@ -4,6 +4,7 @@ import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { LayoutClient } from "@/components/layout/LayoutClient";
 import { ThemeProvider } from "@/components/theme-provider";
+import { ChangelogPopupWrapper } from "@/components/changelog-popup-wrapper";
 
 const ibmPlexSans = IBM_Plex_Sans({
   variable: "--font-ibm-plex-sans",
@@ -61,6 +62,7 @@ export default function RootLayout({
           <LayoutClient>
             {children}
           </LayoutClient>
+          <ChangelogPopupWrapper />
         </ThemeProvider>
       </body>
     </html>

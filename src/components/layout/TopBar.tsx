@@ -148,8 +148,9 @@ export function TopBar({ onMenuClick }: TopBarProps) {
       {/* Mobile-only search row. The Library/Track toggle that used to
           live here has been removed — Library↔Track navigation is now
           handled by the sidebar / bottom nav, and Track is its own page
-          at /dose-log. */}
-      <div className="border-t border-base-300/70 px-3 py-3 sm:px-4 lg:hidden">
+          at /dose-log. pb-3.5 gives the input a touch more breathing
+          room above the bottom-nav's safe-area on Android. */}
+      <div className="border-t border-base-300/60 px-3 pb-3.5 pt-3 sm:px-4 lg:hidden">
         <SubstanceSearch key={`mobile-search-${pathname}-${queryParam}`} mobile />
       </div>
     </header>

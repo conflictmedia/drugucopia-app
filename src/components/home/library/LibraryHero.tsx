@@ -36,7 +36,7 @@ export function LibraryHero({ selectedCategory, categories, totalCount }: Librar
 
   return (
     <section className="mb-6">
-      <div className="hero rounded-box border border-base-300/70 bg-base-100/70 backdrop-blur-sm shadow-sm">
+      <div className="hero rounded-box border border-base-300/70 bg-base-100 shadow-sm md:bg-base-100/70 md:backdrop-blur-sm">
         <div className="hero-content w-full flex-col items-start gap-4 p-5 md:p-6 lg:flex-row lg:items-center lg:justify-between">
           <div className="max-w-2xl space-y-2">
             <div className="badge badge-outline gap-1 text-xs">
