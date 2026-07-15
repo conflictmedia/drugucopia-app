@@ -51,6 +51,8 @@ jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    outputs:
+      VERSION: ${{ steps.set_version.outputs.VERSION }}
     env:
       NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
       NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
@@ -115,18 +117,33 @@ jobs:
           keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
-      - name: Find signed APK/AAB
+      - name: Prepare signed APK for release
+        id: set_version
         run: |
-          echo "Searching for signed APK/AAB files..."
-          find . -name "*.apk" -o -name "*.aab" | head -20
+          # Find the signed APK
+          SIGNED_APK=$(find . -name "*unsigned-signed.apk" | head -1)
+          if [ -z "$SIGNED_APK" ]; then
+            echo "No signed APK found"
+            exit 1
+          fi
+          echo "Found signed APK: $SIGNED_APK"
+          
+          # Get version from package.json (use as-is)
+          VERSION=$(node -e "const p=require('./package.json'); console.log(p.version)")
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          
+          # Copy and rename
+          mkdir -p release-apk
+          cp "$SIGNED_APK" "release-apk/drugucopia-mobile-${VERSION}.apk"
+          echo "Created: release-apk/drugucopia-mobile-${VERSION}.apk"
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-build
           path: |
-            src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk
-            src-tauri/gen/android/app/build/outputs/bundle/universalRelease/*.aab
+            release-apk/*.apk
           retention-days: 7
 
   create-release:
@@ -151,10 +168,10 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ github.run_number }}
-          name: Release v${{ github.run_number }}
+          tag_name: v${{ needs.build-android.outputs.VERSION || '1.0.0' }}
+          name: Release v${{ needs.build-android.outputs.VERSION || '1.0.0' }}
           body: |
-            ## Release v${{ github.run_number }}
+            ## Release v${{ needs.build-android.outputs.VERSION || '1.0.0' }}
             
             **Commit:** ${{ github.sha }}
             **Branch:** ${{ github.ref_name }}
@@ -162,7 +179,7 @@ jobs:
             
             ### Assets
             - **Next.js Build** - Static export and build artifacts
-            - **Android Build** - Signed APK/AAB
+            - **Android Build** - Signed universal APK
             
             ### Changes
             See [commits](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) since last release.
