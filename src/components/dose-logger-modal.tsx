@@ -17,7 +17,7 @@ import { toast } from '@/hooks/use-toast'
 import { useDoseStore } from '@/store/dose-store'
 import { DoseLog, Duration } from '@/types'
 import { calculatePhaseTimings, getPhaseStatus } from '@/components/dose-timeline/dose-timeline-utils'
-import { getDurationForRoute } from '@/lib/duration-interpolation'
+import { getDurationForRoute, normaliseRoute } from '@/lib/duration-interpolation'
 import { DurationOverrideFields } from '@/components/duration-override-fields'
 import { useReminderStore } from '@/store/reminder-store'
 import { formatIntervalMinutes } from '@/lib/notification-utils'
@@ -1332,6 +1332,21 @@ export function DoseLoggerModal({
           ? [raw.category]
           : []
       setCategories(cats)
+
+      // If the newly selected substance doesn't have data for the current
+      // route, switch to its first known route. This matters most for custom
+      // substances: the modal defaults to "oral", but a user may have created
+      // only an "insufflation"/"inhalation" route with complete duration data.
+      // Leaving the stale route selected makes the duration layer interpolate
+      // from the user's route data and show an estimated-duration warning.
+      const routeKeys = raw.routeData ? Object.keys(raw.routeData) : []
+      if (routeKeys.length > 0) {
+        const currentNorm = normaliseRoute(route)
+        const hasCurrentRoute = routeKeys.some((routeKey) =>
+          routeKey === route || (currentNorm !== null && normaliseRoute(routeKey) === currentNorm),
+        )
+        if (!hasCurrentRoute) setRoute(routeKeys[0])
+      }
     } else {
       setSubstanceId(value)
       setSubstanceName(value)
@@ -1428,509 +1443,509 @@ export function DoseLoggerModal({
   function renderFormContent() {
     return (
       <div className="grid gap-4 py-2">
-          {/* ── Quick Input Section ────────────────────────────────────── */}
-          <div className="grid gap-2">
-            <Label className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-yellow-500" />
-              Quick Input
-            </Label>
+        {/* ── Quick Input Section ────────────────────────────────────── */}
+        <div className="grid gap-2">
+          <Label className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-yellow-500" />
+            Quick Input
+          </Label>
 
-            {/* A1 — Pinned favorites row. Rendered above recents so the
+          {/* A1 — Pinned favorites row. Rendered above recents so the
                 user's most-used substances are always one tap away. */}
-            {favoriteSubstances.length > 0 && !quickInput && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Pin className="h-3 w-3 text-amber-500/80 shrink-0" />
-                <span className="text-[11px] text-neutral-content/60">Pinned:</span>
-                {favoriteSubstances.map(sub => {
-                  // Look up the last-dose details so favorites also
-                  // benefit from A2's "log same as last time" behavior.
-                  const lastDose = recentSubstances.find(
-                    (r) => r.id === sub.id || r.name.toLowerCase() === sub.name.toLowerCase(),
-                  )
-                  return (
-                    <div
-                      key={sub.id || sub.name}
-                      className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => selectRecentSubstance({
-                          name: sub.name,
-                          id: sub.id,
-                          category: sub.category || lastDose?.category || '',
-                          amount: lastDose?.amount,
-                          unit: lastDose?.unit,
-                          route: lastDose?.route,
-                        })}
-                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300 min-h-0 min-h-[44px]"
-                      >
-                        {sub.category && (
-                          <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[sub.category] || 'bg-zinc-500'}`} />
-                        )}
-                        {sub.name}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => toggleFavorite(sub)}
-                        className="tap-sm h-5 w-5 inline-flex items-center justify-center text-amber-600/70 hover:text-amber-700 dark:text-amber-400/70 dark:hover:text-amber-300 transition-colors min-h-0 min-h-[44px] min-w-[44px]"
-                        aria-label={`Unpin ${sub.name}`}
-                        title={`Unpin ${sub.name}`}
-                      >
-                        <PinOff className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {recentSubstances.length > 0 && !quickInput && (
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <Clock className="h-3 w-3 text-neutral-content/60 shrink-0" />
-                <span className="text-[11px] text-neutral-content/60">Recent:</span>
-                {recentSubstances.map(sub => {
-                  const isFav = favoriteSubstances.some(
-                    (f) => f.id === sub.id || f.name.toLowerCase() === sub.name.toLowerCase(),
-                  )
-                  return (
-                    <div
-                      key={sub.id || sub.name}
-                      className={cn(
-                        'inline-flex items-center gap-0.5 rounded-full border transition-colors',
-                        isFav
-                          ? 'bg-amber-500/5 border-amber-500/20'
-                          : 'bg-base-200 border-transparent hover:bg-base-300',
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => selectRecentSubstance(sub)}
-                        className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-base-content/80 hover:text-base-content min-h-0 min-h-[44px]"
-                        title={
-                          sub.amount && sub.unit
-                            ? `Log ${sub.amount} ${sub.unit} ${sub.name} (${sub.route || 'oral'})`
-                            : `Select ${sub.name}`
-                        }
-                      >
-                        {sub.category && (
-                          <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[sub.category] || 'bg-zinc-500'}`} />
-                        )}
-                        {sub.name}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          toggleFavorite({
-                            id: sub.id || `custom-${sub.name.toLowerCase().replace(/\s+/g, '-')}`,
-                            name: sub.name,
-                            category: sub.category || undefined,
-                          })
-                        }
-                        className={cn(
-                          'tap-sm h-5 w-5 inline-flex items-center justify-center transition-colors min-h-0 min-h-[44px] min-w-[44px]',
-                          isFav
-                            ? 'text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300'
-                            : 'text-neutral-content/40 hover:text-amber-600 dark:hover:text-amber-400',
-                        )}
-                        aria-label={isFav ? `Unpin ${sub.name}` : `Pin ${sub.name}`}
-                        title={isFav ? `Unpin ${sub.name}` : `Pin ${sub.name}`}
-                      >
-                        {isFav ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
-                      </button>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            <div className="relative">
-              <Input
-                ref={quickInputRef}
-                type="text"
-                placeholder='e.g. "1 tab LSD", "100mg MDMA", "15 pills * 15mg DXM"'
-                value={quickInput}
-                onChange={handleQuickInputChange}
-                onFocus={() => setShowQuickSuggestions(true)}
-                onBlur={handleQuickInputBlur}
-                onKeyDown={handleQuickInputKeyDown}
-                className="text-base"
-              />
-
-              <AnimatePresence>
-                {showQuickSuggestions && quickSuggestions.length > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    transition={{ duration: 0.1 }}
-                    className="absolute z-50 top-full mt-1 w-full rounded-lg border border-base-300 bg-base-100 shadow-xl overflow-hidden"
+          {favoriteSubstances.length > 0 && !quickInput && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Pin className="h-3 w-3 text-amber-500/80 shrink-0" />
+              <span className="text-[11px] text-neutral-content/60">Pinned:</span>
+              {favoriteSubstances.map(sub => {
+                // Look up the last-dose details so favorites also
+                // benefit from A2's "log same as last time" behavior.
+                const lastDose = recentSubstances.find(
+                  (r) => r.id === sub.id || r.name.toLowerCase() === sub.name.toLowerCase(),
+                )
+                return (
+                  <div
+                    key={sub.id || sub.name}
+                    className="inline-flex items-center gap-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 hover:bg-amber-500/20 transition-colors"
                   >
-                    <div className="max-h-64 overflow-y-auto p-1">
-                      {quickSuggestions.map((result, idx) => {
-                        const sub = result.substance
-                        const isActive = idx === quickActiveIndex
-                        return (
-                          <button
-                            key={sub.id}
-                            type="button"
-                            onMouseDown={(e) => {
-                              e.preventDefault()
-                              const raw = sub as any
-                              const cats = Array.isArray(raw.categories) && raw.categories.length > 0
-                                ? raw.categories
-                                : typeof raw.category === 'string' && raw.category && raw.category !== 'unknown'
-                                  ? [raw.category]
-                                  : []
-                              selectQuickSuggestion(sub.id, sub.name, cats)
-                            }}
-                            onMouseEnter={() => setQuickActiveIndex(idx)}
-                            className={`tap-sm flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-sm text-left transition-colors min-h-0 ${isActive ? 'bg-accent text-accent-content' : 'hover:bg-accent/50'}`}
-                          >
-                            <span className={`w-2 h-2 rounded-full shrink-0 ${CATEGORY_DOTS[sub.categories[0]] || 'bg-zinc-500'}`} />
-                            <span className="truncate font-medium">{sub.name}</span>
-                            <span className="text-xs text-neutral-content truncate ml-auto">{sub.class}</span>
-                          </button>
-                        )
+                    <button
+                      type="button"
+                      onClick={() => selectRecentSubstance({
+                        name: sub.name,
+                        id: sub.id,
+                        category: sub.category || lastDose?.category || '',
+                        amount: lastDose?.amount,
+                        unit: lastDose?.unit,
+                        route: lastDose?.route,
                       })}
-                    </div>
-                    <div className="px-2.5 py-1.5 border-t border-base-300 text-xs text-neutral-content flex items-center justify-between">
-                      <span>{quickSuggestions.length} result{quickSuggestions.length !== 1 ? 's' : ''}</span>
-                      <span className="hidden sm:inline">
-                        <kbd className="px-1 py-0.5 rounded bg-base-200 border border-base-300 text-[10px] font-mono">&uarr;&darr;</kbd>
-                        {' / '}
-                        <kbd className="px-1 py-0.5 rounded bg-base-200 border border-base-300 text-[10px] font-mono">Tab</kbd>
-                        {' '}navigate{' '}
-                        <kbd className="px-1 py-0.5 rounded bg-base-200 border border-base-300 text-[10px] font-mono">&crarr;</kbd>
-                        {' '}select
-                      </span>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                      className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-amber-700 dark:text-amber-300 min-h-0 min-h-[44px]"
+                    >
+                      {sub.category && (
+                        <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[sub.category] || 'bg-zinc-500'}`} />
+                      )}
+                      {sub.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => toggleFavorite(sub)}
+                      className="tap-sm h-5 w-5 inline-flex items-center justify-center text-amber-600/70 hover:text-amber-700 dark:text-amber-400/70 dark:hover:text-amber-300 transition-colors min-h-0 min-h-[44px] min-w-[44px]"
+                      aria-label={`Unpin ${sub.name}`}
+                      title={`Unpin ${sub.name}`}
+                    >
+                      <PinOff className="h-3 w-3" />
+                    </button>
+                  </div>
+                )
+              })}
             </div>
+          )}
 
-            {quickInput && (substanceName || amount) && (
-              <div className="flex items-center gap-1.5 flex-wrap min-h-[24px]">
-                {substanceName && (
-                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full bg-primary/10 text-primary border border-primary/20">
-                    {categories[0] && (
-                      <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[categories[0]] || 'bg-zinc-500'}`} />
+          {recentSubstances.length > 0 && !quickInput && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <Clock className="h-3 w-3 text-neutral-content/60 shrink-0" />
+              <span className="text-[11px] text-neutral-content/60">Recent:</span>
+              {recentSubstances.map(sub => {
+                const isFav = favoriteSubstances.some(
+                  (f) => f.id === sub.id || f.name.toLowerCase() === sub.name.toLowerCase(),
+                )
+                return (
+                  <div
+                    key={sub.id || sub.name}
+                    className={cn(
+                      'inline-flex items-center gap-0.5 rounded-full border transition-colors',
+                      isFav
+                        ? 'bg-amber-500/5 border-amber-500/20'
+                        : 'bg-base-200 border-transparent hover:bg-base-300',
                     )}
-                    {substanceName}
-                  </span>
-                )}
-                {amount && unit && (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                    {amount} {unit}
-                  </span>
-                )}
-                {!amount && unit && (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
-                    {unit}
-                  </span>
-                )}
-                {route && (
-                  <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-                    {route}
-                  </span>
-                )}
-              </div>
-            )}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => selectRecentSubstance(sub)}
+                      className="tap-sm inline-flex items-center gap-1 px-2 py-0.5 text-xs text-base-content/80 hover:text-base-content min-h-0 min-h-[44px]"
+                      title={
+                        sub.amount && sub.unit
+                          ? `Log ${sub.amount} ${sub.unit} ${sub.name} (${sub.route || 'oral'})`
+                          : `Select ${sub.name}`
+                      }
+                    >
+                      {sub.category && (
+                        <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[sub.category] || 'bg-zinc-500'}`} />
+                      )}
+                      {sub.name}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        toggleFavorite({
+                          id: sub.id || `custom-${sub.name.toLowerCase().replace(/\s+/g, '-')}`,
+                          name: sub.name,
+                          category: sub.category || undefined,
+                        })
+                      }
+                      className={cn(
+                        'tap-sm h-5 w-5 inline-flex items-center justify-center transition-colors min-h-0 min-h-[44px] min-w-[44px]',
+                        isFav
+                          ? 'text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300'
+                          : 'text-neutral-content/40 hover:text-amber-600 dark:hover:text-amber-400',
+                      )}
+                      aria-label={isFav ? `Unpin ${sub.name}` : `Pin ${sub.name}`}
+                      title={isFav ? `Unpin ${sub.name}` : `Pin ${sub.name}`}
+                    >
+                      {isFav ? <PinOff className="h-3 w-3" /> : <Pin className="h-3 w-3" />}
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
 
-            <p className="text-xs text-neutral-content">
-              Type substance + amount + unit (+ optional route). Supports math: &quot;5 pills * 10mg THC&quot;
-            </p>
+          <div className="relative">
+            <Input
+              ref={quickInputRef}
+              type="text"
+              placeholder='e.g. "1 tab LSD", "100mg MDMA", "15 pills * 15mg DXM"'
+              value={quickInput}
+              onChange={handleQuickInputChange}
+              onFocus={() => setShowQuickSuggestions(true)}
+              onBlur={handleQuickInputBlur}
+              onKeyDown={handleQuickInputKeyDown}
+              className="text-base"
+            />
+
+            <AnimatePresence>
+              {showQuickSuggestions && quickSuggestions.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
+                  transition={{ duration: 0.1 }}
+                  className="absolute z-50 top-full mt-1 w-full rounded-lg border border-base-300 bg-base-100 shadow-xl overflow-hidden"
+                >
+                  <div className="max-h-64 overflow-y-auto p-1">
+                    {quickSuggestions.map((result, idx) => {
+                      const sub = result.substance
+                      const isActive = idx === quickActiveIndex
+                      return (
+                        <button
+                          key={sub.id}
+                          type="button"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            const raw = sub as any
+                            const cats = Array.isArray(raw.categories) && raw.categories.length > 0
+                              ? raw.categories
+                              : typeof raw.category === 'string' && raw.category && raw.category !== 'unknown'
+                                ? [raw.category]
+                                : []
+                            selectQuickSuggestion(sub.id, sub.name, cats)
+                          }}
+                          onMouseEnter={() => setQuickActiveIndex(idx)}
+                          className={`tap-sm flex items-center gap-2 w-full px-2.5 py-1.5 rounded-md text-sm text-left transition-colors min-h-0 ${isActive ? 'bg-accent text-accent-content' : 'hover:bg-accent/50'}`}
+                        >
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${CATEGORY_DOTS[sub.categories[0]] || 'bg-zinc-500'}`} />
+                          <span className="truncate font-medium">{sub.name}</span>
+                          <span className="text-xs text-neutral-content truncate ml-auto">{sub.class}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <div className="px-2.5 py-1.5 border-t border-base-300 text-xs text-neutral-content flex items-center justify-between">
+                    <span>{quickSuggestions.length} result{quickSuggestions.length !== 1 ? 's' : ''}</span>
+                    <span className="hidden sm:inline">
+                      <kbd className="px-1 py-0.5 rounded bg-base-200 border border-base-300 text-[10px] font-mono">&uarr;&darr;</kbd>
+                      {' / '}
+                      <kbd className="px-1 py-0.5 rounded bg-base-200 border border-base-300 text-[10px] font-mono">Tab</kbd>
+                      {' '}navigate{' '}
+                      <kbd className="px-1 py-0.5 rounded bg-base-200 border border-base-300 text-[10px] font-mono">&crarr;</kbd>
+                      {' '}select
+                    </span>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
-          {mathResult && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-emerald-500">
-                  <rect width="8" height="8" x="8" y="8" rx="1" />
-                  <path d="M6 10H2v4h4" />
-                  <path d="M18 10h4v4h-4" />
-                  <path d="M10 6V2h4v4" />
-                  <path d="M10 18v4h4v-4" />
-                </svg>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
-                  Calculation: {mathResult.expression}
-                </p>
-                <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
-                  = {mathResult.result} {mathResult.unit}
-                </p>
-              </div>
-            </div>
-          )}
-
           {quickInput && (substanceName || amount) && (
-            <div className="flex items-center gap-2 text-xs text-neutral-content">
-              <div className="h-px flex-1 bg-border" />
-              <span>Auto-filled from quick input</span>
-              <div className="h-px flex-1 bg-border" />
-            </div>
-          )}
-
-          <div className="grid gap-2">
-            <Label>Substance</Label>
-            <Combobox
-              options={substanceOptions}
-              value={substanceId}
-              onChange={handleSubstanceChange}
-              placeholder="Select from list or type custom..."
-              allowCustom={true}
-            />
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-content">
-              <span>Select from list or type a custom substance</span>
-              {activeMedications.length > 0 && (
-                <span className="inline-flex items-center gap-1">
-                  <Pill className="w-3 h-3" />
-                  <code className="px-1 py-0.5 rounded bg-base-200 text-[10px]">[Rx]</code>
-                  = your medication ({activeMedications.length})
+            <div className="flex items-center gap-1.5 flex-wrap min-h-[24px]">
+              {substanceName && (
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 text-xs font-medium rounded-full bg-primary/10 text-primary border border-primary/20">
+                  {categories[0] && (
+                    <span className={`w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[categories[0]] || 'bg-zinc-500'}`} />
+                  )}
+                  {substanceName}
+                </span>
+              )}
+              {amount && unit && (
+                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  {amount} {unit}
+                </span>
+              )}
+              {!amount && unit && (
+                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                  {unit}
+                </span>
+              )}
+              {route && (
+                <span className="inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                  {route}
                 </span>
               )}
             </div>
-          </div>
-
-          {interactingSubstances.length > 0 && (
-            <Alert variant="destructive" className="bg-error/10 text-error border-error/20">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Potential Interaction Warning</AlertTitle>
-              <AlertDescription>
-                This substance may interact with your currently active dose(s) of: <strong>{interactingSubstances.join(', ')}</strong>.
-                Please exercise caution and research potential interactions.
-              </AlertDescription>
-            </Alert>
           )}
 
-          {/* Medication-profile interaction warnings.
+          <p className="text-xs text-neutral-content">
+            Type substance + amount + unit (+ optional route). Supports math: &quot;5 pills * 10mg THC&quot;
+          </p>
+        </div>
+
+        {mathResult && (
+          <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-emerald-500/10 border border-emerald-500/25">
+            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500/20 shrink-0">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 text-emerald-500">
+                <rect width="8" height="8" x="8" y="8" rx="1" />
+                <path d="M6 10H2v4h4" />
+                <path d="M18 10h4v4h-4" />
+                <path d="M10 6V2h4v4" />
+                <path d="M10 18v4h4v-4" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">
+                Calculation: {mathResult.expression}
+              </p>
+              <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
+                = {mathResult.result} {mathResult.unit}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {quickInput && (substanceName || amount) && (
+          <div className="flex items-center gap-2 text-xs text-neutral-content">
+            <div className="h-px flex-1 bg-border" />
+            <span>Auto-filled from quick input</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+        )}
+
+        <div className="grid gap-2">
+          <Label>Substance</Label>
+          <Combobox
+            options={substanceOptions}
+            value={substanceId}
+            onChange={handleSubstanceChange}
+            placeholder="Select from list or type custom..."
+            allowCustom={true}
+          />
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-content">
+            <span>Select from list or type a custom substance</span>
+            {activeMedications.length > 0 && (
+              <span className="inline-flex items-center gap-1">
+                <Pill className="w-3 h-3" />
+                <code className="px-1 py-0.5 rounded bg-base-200 text-[10px]">[Rx]</code>
+                = your medication ({activeMedications.length})
+              </span>
+            )}
+          </div>
+        </div>
+
+        {interactingSubstances.length > 0 && (
+          <Alert variant="destructive" className="bg-error/10 text-error border-error/20">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Potential Interaction Warning</AlertTitle>
+            <AlertDescription>
+              This substance may interact with your currently active dose(s) of: <strong>{interactingSubstances.join(', ')}</strong>.
+              Please exercise caution and research potential interactions.
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Medication-profile interaction warnings.
               These are separate from active-dose warnings above so the
               user can tell "I just took X" warnings apart from "I'm
               prescribed Y" warnings. Rendered as a list because a user
               may be on multiple medications and each pair can have its
               own severity / description. */}
-          {medicationInteractions.length > 0 && (
-            <Alert variant="destructive" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">
-              <div className="flex items-start gap-2">
-                <Pill className="h-4 w-4 mt-0.5 shrink-0" />
-                <div className="flex-1 min-w-0">
-                  <AlertTitle className="text-amber-800 dark:text-amber-200">
-                    Medication Interaction Warning
-                  </AlertTitle>
-                  <AlertDescription className="space-y-1.5">
-                    <p>
-                      This substance interacts with {medicationInteractions.length === 1 ? 'an active medication' : `${medicationInteractions.length} active medications`} in your <a href="/medications" className="underline font-medium">medication profile</a>:
-                    </p>
-                    <ul className="space-y-1.5 mt-1">
-                      {medicationInteractions.map((pair, idx) => {
-                        // Determine which side of the pair is the
-                        // medication (the side whose name matches one
-                        // of the user's active medications).
-                        const med = activeMedications.find(m =>
-                          pair.substanceA.toLowerCase() === m.name.toLowerCase() ||
-                          (m.genericName && pair.substanceA.toLowerCase() === m.genericName.toLowerCase())
-                        ) || activeMedications.find(m =>
-                          pair.substanceB.toLowerCase() === m.name.toLowerCase() ||
-                          (m.genericName && pair.substanceB.toLowerCase() === m.genericName.toLowerCase())
-                        )
-                        const otherName = med
-                          ? (pair.substanceA.toLowerCase() === med.name.toLowerCase() || (med.genericName && pair.substanceA.toLowerCase() === med.genericName.toLowerCase()) ? pair.substanceB : pair.substanceA)
-                          : `${pair.substanceA} + ${pair.substanceB}`
-                        const sevColor =
-                          pair.severity === 'dangerous' ? 'text-red-600 dark:text-red-400'
-                            : pair.severity === 'unsafe' ? 'text-orange-600 dark:text-orange-400'
-                              : 'text-amber-600 dark:text-amber-400'
-                        const sevLabel = pair.severity === 'dangerous' ? 'DANGEROUS'
-                          : pair.severity === 'unsafe' ? 'Unsafe'
-                            : 'Caution'
-                        return (
-                          <li key={idx} className="text-xs flex items-start gap-2">
-                            <span className={`font-semibold uppercase shrink-0 ${sevColor}`}>{sevLabel}:</span>
-                            <span className="flex-1">
-                              <strong>{med?.name || '?'}</strong>
-                              {med?.medicationType && <span className="opacity-70"> ({med.medicationType})</span>}
-                              {' × '}
-                              <strong>{otherName}</strong>
-                              {pair.description && (
-                                <span className="block opacity-80 mt-0.5">{pair.description}</span>
-                              )}
-                              {pair.sources.length > 0 && (
-                                <span className="block opacity-50 mt-0.5">Source: {pair.sources.join(', ')}</span>
-                              )}
-                            </span>
-                          </li>
-                        )
-                      })}
-                    </ul>
-                  </AlertDescription>
-                </div>
+        {medicationInteractions.length > 0 && (
+          <Alert variant="destructive" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30">
+            <div className="flex items-start gap-2">
+              <Pill className="h-4 w-4 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <AlertTitle className="text-amber-800 dark:text-amber-200">
+                  Medication Interaction Warning
+                </AlertTitle>
+                <AlertDescription className="space-y-1.5">
+                  <p>
+                    This substance interacts with {medicationInteractions.length === 1 ? 'an active medication' : `${medicationInteractions.length} active medications`} in your <a href="/medications" className="underline font-medium">medication profile</a>:
+                  </p>
+                  <ul className="space-y-1.5 mt-1">
+                    {medicationInteractions.map((pair, idx) => {
+                      // Determine which side of the pair is the
+                      // medication (the side whose name matches one
+                      // of the user's active medications).
+                      const med = activeMedications.find(m =>
+                        pair.substanceA.toLowerCase() === m.name.toLowerCase() ||
+                        (m.genericName && pair.substanceA.toLowerCase() === m.genericName.toLowerCase())
+                      ) || activeMedications.find(m =>
+                        pair.substanceB.toLowerCase() === m.name.toLowerCase() ||
+                        (m.genericName && pair.substanceB.toLowerCase() === m.genericName.toLowerCase())
+                      )
+                      const otherName = med
+                        ? (pair.substanceA.toLowerCase() === med.name.toLowerCase() || (med.genericName && pair.substanceA.toLowerCase() === med.genericName.toLowerCase()) ? pair.substanceB : pair.substanceA)
+                        : `${pair.substanceA} + ${pair.substanceB}`
+                      const sevColor =
+                        pair.severity === 'dangerous' ? 'text-red-600 dark:text-red-400'
+                          : pair.severity === 'unsafe' ? 'text-orange-600 dark:text-orange-400'
+                            : 'text-amber-600 dark:text-amber-400'
+                      const sevLabel = pair.severity === 'dangerous' ? 'DANGEROUS'
+                        : pair.severity === 'unsafe' ? 'Unsafe'
+                          : 'Caution'
+                      return (
+                        <li key={idx} className="text-xs flex items-start gap-2">
+                          <span className={`font-semibold uppercase shrink-0 ${sevColor}`}>{sevLabel}:</span>
+                          <span className="flex-1">
+                            <strong>{med?.name || '?'}</strong>
+                            {med?.medicationType && <span className="opacity-70"> ({med.medicationType})</span>}
+                            {' × '}
+                            <strong>{otherName}</strong>
+                            {pair.description && (
+                              <span className="block opacity-80 mt-0.5">{pair.description}</span>
+                            )}
+                            {pair.sources.length > 0 && (
+                              <span className="block opacity-50 mt-0.5">Source: {pair.sources.join(', ')}</span>
+                            )}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </AlertDescription>
               </div>
-            </Alert>
-          )}
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-            <div className="grid gap-2">
-              <Label>Amount</Label>
-              <Input
-                type="text"
-                inputMode="decimal"
-                step="0.1"
-                placeholder="e.g., 100 or 5 mg"
-                value={amount}
-                onChange={handleAmountChange}
-                className="text-base"
-              />
-              <p className="text-xs text-neutral-content">Type a unit after the amount (e.g. &quot;5 mg&quot;, &quot;100μg&quot;) to auto-select it</p>
             </div>
-            <div className="grid gap-2">
-              <Label>Unit</Label>
-              <Combobox
-                options={unitOptions}
-                value={unit}
-                onChange={setUnit}
-                placeholder="Select or type custom..."
-                allowCustom={true}
-              />
-            </div>
-          </div>
+          </Alert>
+        )}
 
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
           <div className="grid gap-2">
-            <Label>Route of Administration</Label>
-            <Combobox
-              options={selectedSubstance?.routeData
-                ? Object.keys(selectedSubstance.routeData).map(r => ({ value: r, label: r }))
-                : defaultRouteOptions}
-              value={route}
-              onChange={setRoute}
-              placeholder="Select or type custom..."
-              allowCustom
-            />
-            <p className="text-xs text-neutral-content">Type a custom route if needed</p>
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Date &amp; Time</Label>
+            <Label>Amount</Label>
             <Input
-              type="datetime-local"
-              value={timestamp}
-              onChange={(e) => {
-                setTimestamp(e.target.value)
-                setTimestampModified(true)
-              }}
+              type="text"
+              inputMode="decimal"
+              step="0.1"
+              placeholder="e.g., 100 or 5 mg"
+              value={amount}
+              onChange={handleAmountChange}
               className="text-base"
             />
+            <p className="text-xs text-neutral-content">Type a unit after the amount (e.g. &quot;5 mg&quot;, &quot;100μg&quot;) to auto-select it</p>
           </div>
+          <div className="grid gap-2">
+            <Label>Unit</Label>
+            <Combobox
+              options={unitOptions}
+              value={unit}
+              onChange={setUnit}
+              placeholder="Select or type custom..."
+              allowCustom={true}
+            />
+          </div>
+        </div>
 
-          {/* A5 — Optional details collapsed by default.
+        <div className="grid gap-2">
+          <Label>Route of Administration</Label>
+          <Combobox
+            options={selectedSubstance?.routeData
+              ? Object.keys(selectedSubstance.routeData).map(r => ({ value: r, label: r }))
+              : defaultRouteOptions}
+            value={route}
+            onChange={setRoute}
+            placeholder="Select or type custom..."
+            allowCustom
+          />
+          <p className="text-xs text-neutral-content">Type a custom route if needed</p>
+        </div>
+
+        <div className="grid gap-2">
+          <Label>Date &amp; Time</Label>
+          <Input
+            type="datetime-local"
+            value={timestamp}
+            onChange={(e) => {
+              setTimestamp(e.target.value)
+              setTimestampModified(true)
+            }}
+            className="text-base"
+          />
+        </div>
+
+        {/* A5 — Optional details collapsed by default.
               The mobile form was getting long (5+ Comboboxes + a textarea
               + a range slider). Hiding the optional stuff behind a single
               disclosure keeps the "log a dose" flow short for the common
               case where the user just wants to record substance+amount+route+time.
               Count of filled optional fields is shown in the trigger so the
               user can see at a glance whether they've already filled anything in. */}
-          <div className="rounded-lg border border-base-300/60 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setOptionalOpen((v) => !v)}
-              aria-expanded={optionalOpen}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium hover:bg-base-200/50 transition-colors text-left"
-            >
-              <span className="flex items-center gap-2">
-                <span className="text-neutral-content">Optional details</span>
-                {(() => {
-                  const filledCount = [
-                    !!mood,
-                    !!setting,
-                    intensity !== 5,
-                    !!notes.trim(),
-                    !!durationOverride,
-                  ].filter(Boolean).length
-                  if (filledCount === 0) return null
-                  return (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium tabular-nums">
-                      {filledCount} filled
-                    </span>
-                  )
-                })()}
-              </span>
-              {optionalOpen
-                ? <ChevronUp className="h-4 w-4 text-neutral-content shrink-0" />
-                : <ChevronDown className="h-4 w-4 text-neutral-content shrink-0" />}
-            </button>
+        <div className="rounded-lg border border-base-300/60 overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setOptionalOpen((v) => !v)}
+            aria-expanded={optionalOpen}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-sm font-medium hover:bg-base-200/50 transition-colors text-left"
+          >
+            <span className="flex items-center gap-2">
+              <span className="text-neutral-content">Optional details</span>
+              {(() => {
+                const filledCount = [
+                  !!mood,
+                  !!setting,
+                  intensity !== 5,
+                  !!notes.trim(),
+                  !!durationOverride,
+                ].filter(Boolean).length
+                if (filledCount === 0) return null
+                return (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium tabular-nums">
+                    {filledCount} filled
+                  </span>
+                )
+              })()}
+            </span>
+            {optionalOpen
+              ? <ChevronUp className="h-4 w-4 text-neutral-content shrink-0" />
+              : <ChevronDown className="h-4 w-4 text-neutral-content shrink-0" />}
+          </button>
 
-            {optionalOpen && (
-              <div className="px-3 pb-3 pt-1 grid gap-4">
-                <div className="grid gap-2 rounded-lg border border-base-300/60 bg-base-200/20 p-3">
-                  <DurationOverrideFields
-                    baseDuration={estimatedDuration}
-                    onChange={setDurationOverride}
-                  />
-                </div>
+          {optionalOpen && (
+            <div className="px-3 pb-3 pt-1 grid gap-4">
+              <div className="grid gap-2 rounded-lg border border-base-300/60 bg-base-200/20 p-3">
+                <DurationOverrideFields
+                  baseDuration={estimatedDuration}
+                  onChange={setDurationOverride}
+                />
+              </div>
 
-                <div className="grid gap-2">
-                  <Label>Mood (optional)</Label>
-                  <Combobox
-                    options={moodOptions}
-                    value={mood}
-                    onChange={setMood}
-                    placeholder="Select or type custom..."
-                    allowCustom={true}
-                  />
-                </div>
+              <div className="grid gap-2">
+                <Label>Mood (optional)</Label>
+                <Combobox
+                  options={moodOptions}
+                  value={mood}
+                  onChange={setMood}
+                  placeholder="Select or type custom..."
+                  allowCustom={true}
+                />
+              </div>
 
-                <div className="grid gap-2">
-                  <Label>Setting (optional)</Label>
-                  <Combobox
-                    options={settingOptions}
-                    value={setting}
-                    onChange={setSetting}
-                    placeholder="Select or type custom..."
-                    allowCustom={true}
-                  />
-                </div>
+              <div className="grid gap-2">
+                <Label>Setting (optional)</Label>
+                <Combobox
+                  options={settingOptions}
+                  value={setting}
+                  onChange={setSetting}
+                  placeholder="Select or type custom..."
+                  allowCustom={true}
+                />
+              </div>
 
-                <div className="grid gap-2">
-                  <Label htmlFor="dose-intensity" className="flex items-center justify-between">
-                    <span>Intensity (optional)</span>
-                    <span className="text-xs text-neutral-content tabular-nums">{intensity}/10</span>
-                  </Label>
-                  <input
-                    id="dose-intensity"
-                    type="range"
-                    min={0}
-                    max={10}
-                    step={1}
-                    value={intensity}
-                    onChange={(e) => setIntensity(Number(e.target.value))}
-                    className="range range-xs range-primary"
-                    aria-valuemin={0}
-                    aria-valuemax={10}
-                    aria-valuenow={intensity}
-                  />
-                  <div className="flex justify-between text-[10px] text-neutral-content/70 px-0.5">
-                    <span>None</span>
-                    <span>Mild</span>
-                    <span>Moderate</span>
-                    <span>Strong</span>
-                    <span>Peak</span>
-                  </div>
-                </div>
-
-                <div className="grid gap-2">
-                  <Label>Notes (optional)</Label>
-                  <Textarea
-                    placeholder="Any additional notes about this experience..."
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={isMobile ? 2 : 3}
-                    className="text-base"
-                  />
+              <div className="grid gap-2">
+                <Label htmlFor="dose-intensity" className="flex items-center justify-between">
+                  <span>Intensity (optional)</span>
+                  <span className="text-xs text-neutral-content tabular-nums">{intensity}/10</span>
+                </Label>
+                <input
+                  id="dose-intensity"
+                  type="range"
+                  min={0}
+                  max={10}
+                  step={1}
+                  value={intensity}
+                  onChange={(e) => setIntensity(Number(e.target.value))}
+                  className="range range-xs range-primary"
+                  aria-valuemin={0}
+                  aria-valuemax={10}
+                  aria-valuenow={intensity}
+                />
+                <div className="flex justify-between text-[10px] text-neutral-content/70 px-0.5">
+                  <span>None</span>
+                  <span>Mild</span>
+                  <span>Moderate</span>
+                  <span>Strong</span>
+                  <span>Peak</span>
                 </div>
               </div>
-            )}
-          </div>
+
+              <div className="grid gap-2">
+                <Label>Notes (optional)</Label>
+                <Textarea
+                  placeholder="Any additional notes about this experience..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={isMobile ? 2 : 3}
+                  className="text-base"
+                />
+              </div>
+            </div>
+          )}
         </div>
+      </div>
     )
   }
 

@@ -53,7 +53,7 @@ jobs:
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,armv7-linux-androideabi
+          targets: aarch64-linux-android
 
       - name: Setup Rust build cache
         uses: Swatinem/rust-cache@v2
@@ -72,12 +72,16 @@ jobs:
       - name: Build Next.js (for Android)
         run: npm run build
 
+      - name: Setup sccache
+        uses: Mozilla-Actions/sccache-action@v0.0.6
+
       - name: Build Android APK
         run: bash scripts/android.sh build --ci
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
-
+          RUSTC_WRAPPER: sccache
+          
       - name: Find APK/AAB output
         run: |
           echo "Searching for APK/AAB files..."
