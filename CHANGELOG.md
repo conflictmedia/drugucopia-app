@@ -11,7 +11,7 @@
 
 ### Changed
 - horizontal padding to Safety page
-
+- Build settings for speed
 
 
 ## [0.1.3] - 2026-07-15
