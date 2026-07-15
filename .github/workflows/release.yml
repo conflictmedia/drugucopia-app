@@ -10,44 +10,6 @@ permissions:
   packages: read
 
 jobs:
-  build-nextjs:
-    name: Build Next.js
-    runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
-      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
-      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
-      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
-      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
-      NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Build Next.js
-        run: npm run build
-
-      - name: Upload Next.js artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: nextjs-build
-          path: |
-            .next/
-            public/
-            out/
-          retention-days: 7
-
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
@@ -148,17 +110,11 @@ jobs:
 
   create-release:
     name: Create GitHub Release
-    needs: [build-nextjs, build-android]
+    needs: [build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download Next.js artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: nextjs-build
-          path: nextjs-build
-
       - name: Download Android artifact
         uses: actions/download-artifact@v4
         with:
@@ -178,7 +134,6 @@ jobs:
             **Triggered by:** ${{ github.actor }}
             
             ### Assets
-            - **Next.js Build** - Static export and build artifacts
             - **Android Build** - Signed universal APK
             
             ### Changes
@@ -186,6 +141,5 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            nextjs-build/**
             android-build/**
           token: ${{ secrets.GITHUB_TOKEN }}
