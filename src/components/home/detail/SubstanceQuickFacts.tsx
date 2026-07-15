@@ -4,6 +4,7 @@ import {
   BookOpen,
   ExternalLink,
   FlaskConical,
+  Globe,
   Route as RouteIcon,
   Scale,
   Shuffle,
@@ -153,6 +154,19 @@ export function SubstanceQuickFacts({ substance, onOpenInteractions }: Substance
               >
                 <BookOpen className="h-4 w-4" />
                 PsychonautWiki
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+
+            {substance.wikipediaUrl && (
+              <a
+                href={substance.wikipediaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-secondary btn-sm gap-2"
+              >
+                <Globe className="h-4 w-4" />
+                View on Wikipedia
                 <ExternalLink className="h-3 w-3" />
               </a>
             )}
