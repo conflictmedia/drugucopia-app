@@ -622,8 +622,21 @@
 
   body {
     @apply text-base-content;
+    height: 100dvh;
+    overflow: hidden;
     background: transparent;
   }
+}
+
+/* The app shell has exactly one vertical scroll owner. Keeping scrolling on
+   this viewport-sized element avoids nested WebView scrollers fighting over
+   touch gestures (especially on Android). */
+.app-scroll-region {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ─── Custom Utilities ─── */
@@ -1265,7 +1278,9 @@
 
   /* ─── Reduced motion: respect user preference for minimal animation ─── */
   @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after {
+    *,
+    *::before,
+    *::after {
       animation-duration: 0.01ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.01ms !important;

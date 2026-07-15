@@ -134,11 +134,11 @@ export function LayoutClient({ children }: LayoutClientProps) {
   return (
     <SyncProvider>
       <ReminderProvider>
-        <div className="min-h-[100dvh] bg-transparent">
+        <div className="h-[100dvh] overflow-hidden bg-transparent">
           <MilkdropBackgroundWrapper />
 
           {isMobile ? (
-            <div className="drawer">
+            <div className="drawer h-[100dvh] overflow-hidden">
               <input
                 id={DRAWER_ID}
                 type="checkbox"

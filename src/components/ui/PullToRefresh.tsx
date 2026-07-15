@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState, useCallback } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 interface PullToRefreshProps {
@@ -10,6 +10,28 @@ interface PullToRefreshProps {
   className?: string
 }
 
+/** Find the element that actually owns vertical scrolling.
+ *
+ * PullToRefresh used to make its wrapper a second `overflow-y-auto` region.
+ * In the Android WebView that nested scroller captured touch gestures while
+ * the app shell's <main> element owned the real scroll position. The wrapper's
+ * scrollTop consequently stayed at zero and almost every downward gesture was
+ * misread as pull-to-refresh.
+ */
+function findScrollParent(element: HTMLElement | null): HTMLElement | null {
+  let parent = element?.parentElement ?? null
+
+  while (parent) {
+    const { overflowY } = window.getComputedStyle(parent)
+    if (overflowY === 'auto' || overflowY === 'scroll') return parent
+    parent = parent.parentElement
+  }
+
+  return document.scrollingElement instanceof HTMLElement
+    ? document.scrollingElement
+    : document.documentElement
+}
+
 export function PullToRefresh({
   onRefresh,
   children,
@@ -17,156 +39,105 @@ export function PullToRefresh({
   className,
 }: PullToRefreshProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const indicatorRef = useRef<HTMLDivElement>(null)
-  const [isPulling, setIsPulling] = useState(false)
+  const startY = useRef<number | null>(null)
+  const trackingPull = useRef(false)
   const [pullDistance, setPullDistance] = useState(0)
   const [isRefreshing, setIsRefreshing] = useState(false)
-  const startY = useRef<number | null>(null)
-  const observer = useRef<IntersectionObserver | null>(null)
-
-  // Create a sentinel element at the top to detect overscroll
-  const sentinelRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const container = containerRef.current
-    const sentinel = sentinelRef.current
-    if (!container || !sentinel) return
-
-    observer.current = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && entry.intersectionRatio > 0) {
-          // Sentinel is visible = user has pulled down past threshold
-          setIsPulling(true)
-        } else if (isPulling && !isRefreshing) {
-          // Sentinel hidden = user released, trigger refresh
-          triggerRefresh()
-        }
-      },
-      {
-        root: container,
-        rootMargin: `${threshold}px 0px 0px 0px`,
-        threshold: 0,
-      }
-    )
-
-    observer.current.observe(sentinel)
-
-    return () => {
-      observer.current?.disconnect()
-    }
-  }, [threshold, isPulling, isRefreshing])
 
   const triggerRefresh = useCallback(async () => {
     if (isRefreshing) return
+
     setIsRefreshing(true)
-    setIsPulling(false)
     setPullDistance(0)
+    trackingPull.current = false
 
     try {
       await onRefresh()
-      // Haptic feedback on refresh complete
-      if (typeof window !== 'undefined' && 'navigator' in window) {
-        const haptics = (window as any).__TAURI_HAPTICS__
-        if (haptics?.success) {
-          haptics.success()
-        }
-      }
+
+      const haptics = (window as Window & {
+        __TAURI_HAPTICS__?: { success?: () => void }
+      }).__TAURI_HAPTICS__
+      haptics?.success?.()
     } catch (error) {
       console.error('Pull to refresh failed:', error)
     } finally {
       setIsRefreshing(false)
     }
-  }, [onRefresh, isRefreshing])
+  }, [isRefreshing, onRefresh])
 
-  // Touch handling for more precise control
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (isRefreshing) return
-    const container = containerRef.current
-    if (!container || container.scrollTop > 0) return
-    startY.current = e.touches[0].clientY
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (isRefreshing || event.touches.length !== 1) return
+
+    const scrollParent = findScrollParent(containerRef.current)
+    if (scrollParent && scrollParent.scrollTop > 0) return
+
+    startY.current = event.touches[0].clientY
+    trackingPull.current = true
   }
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (isRefreshing || startY.current === null) return
-    const container = containerRef.current
-    if (!container || container.scrollTop > 0) return
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (!trackingPull.current || startY.current === null || isRefreshing) return
 
-    const currentY = e.touches[0].clientY
-    const distance = currentY - startY.current
-
-    if (distance > 0) {
-      setPullDistance(Math.min(distance, threshold * 1.5))
-      setIsPulling(true)
-    }
-  }
-
-  const handleTouchEnd = () => {
-    if (isRefreshing || !isPulling) return
-    if (pullDistance >= threshold) {
-      triggerRefresh()
-    } else {
-      setIsPulling(false)
+    const scrollParent = findScrollParent(containerRef.current)
+    if (scrollParent && scrollParent.scrollTop > 0) {
+      trackingPull.current = false
+      startY.current = null
       setPullDistance(0)
+      return
     }
-    startY.current = null
+
+    const distance = event.touches[0].clientY - startY.current
+    if (distance <= 0) {
+      // An upward finger movement is ordinary downward page scrolling.
+      // Stop tracking it immediately and leave the browser in full control.
+      trackingPull.current = false
+      startY.current = null
+      setPullDistance(0)
+      return
+    }
+
+    // Apply resistance so the indicator does not chase the finger one-to-one.
+    setPullDistance(Math.min(distance * 0.5, threshold * 1.5))
   }
 
-  const indicatorStyle: React.CSSProperties = {
-    height: Math.max(pullDistance, isRefreshing ? threshold : 0),
-    opacity: isPulling || isRefreshing ? 1 : 0,
-    transition: 'height 0.15s ease-out, opacity 0.2s ease-out',
+  const finishPull = () => {
+    if (!trackingPull.current || isRefreshing) return
+
+    const shouldRefresh = pullDistance >= threshold
+    trackingPull.current = false
+    startY.current = null
+    setPullDistance(0)
+
+    if (shouldRefresh) void triggerRefresh()
   }
+
+  const indicatorHeight = isRefreshing ? threshold : pullDistance
 
   return (
     <div
       ref={containerRef}
-      className={cn('overflow-y-auto', className)}
+      className={cn('min-w-0 touch-pan-y', className)}
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
-      onTouchEnd={handleTouchEnd}
-      style={{ overscrollBehavior: 'none' }}
+      onTouchEnd={finishPull}
+      onTouchCancel={finishPull}
     >
-      {/* Sentinel element for IntersectionObserver */}
       <div
-        ref={sentinelRef}
-        style={{ height: '1px', marginTop: `-${threshold}px` }}
-        aria-hidden="true"
-      />
-
-      {/* Refresh indicator */}
-      <div
-        ref={indicatorRef}
         className={cn(
-          'pull-indicator flex items-center justify-center transition-all duration-150',
-          isRefreshing && 'animate-pulse'
+          'flex items-center justify-center overflow-hidden transition-[height,opacity] duration-150',
+          isRefreshing && 'animate-pulse',
         )}
-        style={indicatorStyle}
+        style={{
+          height: indicatorHeight,
+          opacity: indicatorHeight > 0 ? 1 : 0,
+        }}
         role="status"
         aria-live="polite"
         aria-label={isRefreshing ? 'Refreshing...' : 'Pull to refresh'}
       >
         {isRefreshing ? (
           <>
-            <svg
-              className="animate-spin h-5 w-5 text-primary"
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-            >
-              <circle
-                className="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                strokeWidth="4"
-              />
-              <path
-                className="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              />
-            </svg>
+            <span className="loading loading-spinner loading-sm text-primary" />
             <span className="ml-2 text-sm">Refreshing...</span>
           </>
         ) : pullDistance > 0 ? (
@@ -174,13 +145,14 @@ export function PullToRefresh({
             <svg
               className={cn(
                 'h-5 w-5 text-neutral-content transition-transform duration-150',
-                pullDistance >= threshold && 'rotate-180'
+                pullDistance >= threshold && 'rotate-180',
               )}
               xmlns="http://www.w3.org/2000/svg"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
               strokeWidth="2"
+              aria-hidden="true"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
             </svg>
