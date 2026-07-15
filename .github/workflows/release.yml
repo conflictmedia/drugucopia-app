@@ -49,7 +49,7 @@ jobs:
           retention-days: 7
 
   build-tauri:
-    name: Build Tauri
+    name: Build Tauri (Desktop)
     runs-on: ubuntu-latest
     env:
       NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
@@ -108,13 +108,79 @@ jobs:
         with:
           name: tauri-build
           path: |
-            src-tauri/target/release/bundle/
+            src-tauri/target/release/bundle/**/*
             src-tauri/target/release/drugucopia
+          retention-days: 7
+
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.NEXT_PUBLIC_FIREBASE_API_KEY }}
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN }}
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_PROJECT_ID }}
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET }}
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID }}
+      NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.NEXT_PUBLIC_FIREBASE_APP_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          ndk-version: r27c
+          cache-key: android-sdk
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Next.js (for Android)
+        run: npm run build
+
+      - name: Build Android APK
+        run: bash scripts/android.sh build
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+
+      - name: Sign APK
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app
+        with:
+          releaseDirectory: src-tauri/gen/android/app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          alias: ${{ secrets.ANDROID_KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyPassword: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-build
+          path: |
+            src-tauri/gen/android/app/build/outputs/apk/release/*.apk
+            src-tauri/gen/android/app/build/outputs/apk/release/*.aab
           retention-days: 7
 
   create-release:
     name: Create GitHub Release
-    needs: [build-nextjs, build-tauri]
+    needs: [build-nextjs, build-tauri, build-android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -131,6 +197,12 @@ jobs:
           name: tauri-build
           path: tauri-build
 
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-build
+          path: android-build
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -146,6 +218,7 @@ jobs:
             ### Assets
             - **Next.js Build** - Static export and build artifacts
             - **Tauri Build** - Desktop application bundles
+            - **Android Build** - Signed APK/AAB
             
             ### Changes
             See [commits](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}) since last release.
@@ -154,4 +227,5 @@ jobs:
           files: |
             nextjs-build/**
             tauri-build/**
+            android-build/**
           token: ${{ secrets.GITHUB_TOKEN }}
