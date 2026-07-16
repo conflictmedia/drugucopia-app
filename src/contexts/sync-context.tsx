@@ -6,6 +6,8 @@ import { getFirestore, type Firestore, doc, onSnapshot, setDoc, serverTimestamp 
 import { toast } from '../hooks/use-toast'
 import { useDoseStore } from '../store/dose-store'
 import { useReminderStore } from '../store/reminder-store'
+import { useCustomSubstanceStore, type CustomSubstance } from '../store/custom-substance-store'
+import { useMedicationStore, type UserMedication } from '../store/medication-store'
 import { DoseLog, ReminderSchedule, ActiveReminder } from '../types'
 
 const firebaseConfig = {
@@ -224,6 +226,50 @@ const getUpdateTime = (d: DoseLog) => new Date(d.updatedAt || d.createdAt).getTi
 
 const getScheduleUpdateTime = (s: ReminderSchedule) => new Date(s.updatedAt || s.createdAt).getTime()
 
+type VersionedSyncItem = {
+  id: string
+  createdAt: string
+  updatedAt: string
+}
+
+/** Merge an encrypted profile collection using tombstones for deletions and
+ * updatedAt for edits. This is shared by custom substances and medications. */
+const mergeVersionedCollection = <T extends VersionedSyncItem>(
+  local: T[],
+  remote: T[],
+  localDeleted: Set<string>,
+  remoteDeleted: Set<string>,
+) => {
+  const deleted = new Set([...localDeleted, ...remoteDeleted])
+  const items = new Map<string, T>()
+
+  for (const item of local) {
+    if (!deleted.has(item.id)) items.set(item.id, item)
+  }
+
+  for (const item of remote) {
+    if (deleted.has(item.id)) continue
+    const existing = items.get(item.id)
+    const existingTime = existing
+      ? new Date(existing.updatedAt || existing.createdAt).getTime()
+      : Number.NEGATIVE_INFINITY
+    const remoteTime = new Date(item.updatedAt || item.createdAt).getTime()
+    if (!existing || remoteTime > existingTime) items.set(item.id, item)
+  }
+
+  return { items: Array.from(items.values()), deleted }
+}
+
+const versionedCollectionSignature = <T extends VersionedSyncItem>(
+  items: T[],
+  deleted: Set<string>,
+) => JSON.stringify({
+  items: items
+    .map((item) => `${item.id}:${item.updatedAt || item.createdAt}`)
+    .sort(),
+  deleted: [...deleted].sort(),
+})
+
 /**
  * D2 — A pending sync conflict for a single dose.
  * The user must pick "keep local", "keep remote", or "keep both"
@@ -434,6 +480,14 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const initializeReminders = useReminderStore(s => s.initialize)
   const setRemindersFromSync = useReminderStore(s => s.setRemindersFromSync)
 
+  const customSubstancesLoaded = useCustomSubstanceStore(s => s.loaded)
+  const initializeCustomSubstances = useCustomSubstanceStore(s => s.initialize)
+  const setCustomSubstancesFromSync = useCustomSubstanceStore(s => s.setSubstancesFromSync)
+
+  const medicationsLoaded = useMedicationStore(s => s.loaded)
+  const initializeMedications = useMedicationStore(s => s.initialize)
+  const setMedicationsFromSync = useMedicationStore(s => s.setMedicationsFromSync)
+
   const [syncStatus, setSyncStatusRaw] = useState<'idle' | 'connecting' | 'synced' | 'error'>('idle')
   // D1 — last time we got a successful snapshot from Firestore.
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null)
@@ -489,7 +543,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     initialize()
     initializeReminders()
-  }, [initialize, initializeReminders])
+    initializeCustomSubstances()
+    initializeMedications()
+  }, [initialize, initializeReminders, initializeCustomSubstances, initializeMedications])
 
   // Use refs for store data so pushToSync doesn't recreate on every state change.
   // This prevents unnecessary effect triggers in the auto-push subscription.
@@ -504,6 +560,39 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     soundEnabled: useReminderStore.getState().soundEnabled,
   })
 
+  const customSubstancesRef = useRef(useCustomSubstanceStore.getState().substances)
+  const deletedCustomSubstanceIdsRef = useRef(useCustomSubstanceStore.getState().deletedIds)
+  const medicationsRef = useRef(useMedicationStore.getState().medications)
+  const deletedMedicationIdsRef = useRef(useMedicationStore.getState().deletedIds)
+
+  // Initialization can complete before the vanilla Zustand subscriptions below
+  // are attached. Refresh every payload ref once hydration finishes so the
+  // first Firebase write cannot accidentally upload empty profile arrays.
+  useEffect(() => {
+    if (isLoaded) {
+      dosesRef.current = useDoseStore.getState().doses
+      deletedIdsRef.current = useDoseStore.getState().deletedIds
+    }
+    if (reminderIsLoaded) {
+      const reminderState = useReminderStore.getState()
+      schedulesRef.current = reminderState.schedules
+      activeRemindersRef.current = reminderState.activeReminders
+      deletedScheduleIdsRef.current = reminderState.deletedScheduleIds
+      reminderSettingsRef.current = {
+        autoStartEnabled: reminderState.autoStartEnabled,
+        soundEnabled: reminderState.soundEnabled,
+      }
+    }
+    if (customSubstancesLoaded) {
+      customSubstancesRef.current = useCustomSubstanceStore.getState().substances
+      deletedCustomSubstanceIdsRef.current = useCustomSubstanceStore.getState().deletedIds
+    }
+    if (medicationsLoaded) {
+      medicationsRef.current = useMedicationStore.getState().medications
+      deletedMedicationIdsRef.current = useMedicationStore.getState().deletedIds
+    }
+  }, [isLoaded, reminderIsLoaded, customSubstancesLoaded, medicationsLoaded])
+
   // Ref to hold pushToSync so it can call itself recursively
   const pushToSyncRef = useRef<typeof pushToSync>(null)
 
@@ -515,6 +604,8 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       isPushing: isPushingRef.current,
       isLoaded,
       reminderIsLoaded,
+      customSubstancesLoaded,
+      medicationsLoaded,
       syncStatus: syncStatusRef.current,
       initialSyncDone: initialSyncDoneRef.current,
     }
@@ -533,7 +624,14 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    if (!cryptoKeyRef.current || !hashedRoomRef.current || !isLoaded || !reminderIsLoaded) {
+    if (
+      !cryptoKeyRef.current ||
+      !hashedRoomRef.current ||
+      !isLoaded ||
+      !reminderIsLoaded ||
+      !customSubstancesLoaded ||
+      !medicationsLoaded
+    ) {
       console.debug('[sync] pushToSync skipped — guards:', guard)
       return
     }
@@ -570,10 +668,18 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       const currentActiveReminders = activeRemindersRef.current
       const currentDeletedScheduleIds = deletedScheduleIdsRef.current
       const currentReminderSettings = reminderSettingsRef.current
+      const currentCustomSubstances = customSubstancesRef.current
+      const currentDeletedCustomSubstances = deletedCustomSubstanceIdsRef.current
+      const currentMedications = medicationsRef.current
+      const currentDeletedMedications = deletedMedicationIdsRef.current
 
       const payload = {
         doses: currentDoses,
         deleted: [...currentDeleted],
+        customSubstances: currentCustomSubstances,
+        deletedCustomSubstances: [...currentDeletedCustomSubstances],
+        medications: currentMedications,
+        deletedMedications: [...currentDeletedMedications],
         // Reminder sync data
         schedules: currentSchedules,
         deletedSchedules: [...currentDeletedScheduleIds],
@@ -585,7 +691,10 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       }
       const encrypted = await encryptData(payload, cryptoKeyRef.current)
       lastPushedHashRef.current = encrypted.ciphertext.substring(0, 32)
-      console.debug(`[sync] setDoc writing ${currentDoses.length} doses, ${currentSchedules.length} schedules`)
+      console.debug(
+        `[sync] setDoc writing ${currentDoses.length} doses, ${currentSchedules.length} schedules, ` +
+        `${currentCustomSubstances.length} custom substances, ${currentMedications.length} medications`,
+      )
       await setDoc(doc(db, 'secure_rooms', hashedRoomRef.current), {
         encrypted,
         updatedAt: serverTimestamp(),
@@ -613,7 +722,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     } finally {
       isPushingRef.current = false
     }
-  }, [isLoaded, reminderIsLoaded])
+  }, [isLoaded, reminderIsLoaded, customSubstancesLoaded, medicationsLoaded])
 
   // Store pushToSync in ref so it can call itself recursively
   useEffect(() => {
@@ -689,15 +798,75 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       }
     })
 
+    const unsubCustomSubstances = useCustomSubstanceStore.subscribe((state) => {
+      customSubstancesRef.current = state.substances
+      deletedCustomSubstanceIdsRef.current = state.deletedIds
+
+      if (skipAutoPushCountRef.current > 0) {
+        skipAutoPushCountRef.current = Math.max(0, skipAutoPushCountRef.current - 1)
+        return
+      }
+
+      setHasPendingChanges(true)
+      if (
+        syncStatusRef.current === 'synced' &&
+        state.loaded &&
+        isLoaded &&
+        reminderIsLoaded &&
+        medicationsLoaded &&
+        initialSyncDoneRef.current
+      ) {
+        if (pushDebounceRef.current) clearTimeout(pushDebounceRef.current)
+        pushDebounceRef.current = setTimeout(() => {
+          pushDebounceRef.current = null
+          pushToSync()
+        }, 2000)
+      }
+    })
+
+    const unsubMedications = useMedicationStore.subscribe((state) => {
+      medicationsRef.current = state.medications
+      deletedMedicationIdsRef.current = state.deletedIds
+
+      if (skipAutoPushCountRef.current > 0) {
+        skipAutoPushCountRef.current = Math.max(0, skipAutoPushCountRef.current - 1)
+        return
+      }
+
+      setHasPendingChanges(true)
+      if (
+        syncStatusRef.current === 'synced' &&
+        state.loaded &&
+        isLoaded &&
+        reminderIsLoaded &&
+        customSubstancesLoaded &&
+        initialSyncDoneRef.current
+      ) {
+        if (pushDebounceRef.current) clearTimeout(pushDebounceRef.current)
+        pushDebounceRef.current = setTimeout(() => {
+          pushDebounceRef.current = null
+          pushToSync()
+        }, 2000)
+      }
+    })
+
     return () => {
       unsubDose()
       unsubReminder()
+      unsubCustomSubstances()
+      unsubMedications()
       if (pushDebounceRef.current) {
         clearTimeout(pushDebounceRef.current)
         pushDebounceRef.current = null
       }
     }
-  }, [pushToSync, isLoaded, reminderIsLoaded])
+  }, [
+    pushToSync,
+    isLoaded,
+    reminderIsLoaded,
+    customSubstancesLoaded,
+    medicationsLoaded,
+  ])
 
   const connectToSync = useCallback(async (rId?: string, pass?: string) => {
     const effectiveRId = rId ?? roomIdRef.current
@@ -888,10 +1057,39 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
             )
             const mergedActiveReminders = mergeActiveReminders(localActiveReminders, remoteActiveReminders)
 
+            // ─── Custom substance + medication profile merge ───
+            const customState = useCustomSubstanceStore.getState()
+            const medicationState = useMedicationStore.getState()
+            const remoteCustomSubstances: CustomSubstance[] = payload.customSubstances ?? []
+            const remoteDeletedCustomSubstances = new Set<string>(payload.deletedCustomSubstances ?? [])
+            const remoteMedications: UserMedication[] = payload.medications ?? []
+            const remoteDeletedMedications = new Set<string>(payload.deletedMedications ?? [])
+
+            const { items: mergedCustomSubstances, deleted: mergedDeletedCustomSubstances } =
+              mergeVersionedCollection(
+                customState.substances,
+                remoteCustomSubstances,
+                isFirstEverSync ? new Set<string>() : customState.deletedIds,
+                remoteDeletedCustomSubstances,
+              )
+            const { items: mergedMedications, deleted: mergedDeletedMedications } =
+              mergeVersionedCollection(
+                medicationState.medications,
+                remoteMedications,
+                isFirstEverSync ? new Set<string>() : medicationState.deletedIds,
+                remoteDeletedMedications,
+              )
+
+            const profileNeedsConsolidatedPush =
+              versionedCollectionSignature(mergedCustomSubstances, mergedDeletedCustomSubstances) !==
+              versionedCollectionSignature(remoteCustomSubstances, remoteDeletedCustomSubstances) ||
+              versionedCollectionSignature(mergedMedications, mergedDeletedMedications) !==
+              versionedCollectionSignature(remoteMedications, remoteDeletedMedications)
+
             // Prevent the incoming sync merge from triggering auto-pushes.
-            // We're updating 2 stores, so we need 2 skip tokens.
-            // Each store subscription will decrement the counter once.
-            skipAutoPushCountRef.current += 2
+            // Four stores are updated below, so each subscription receives one
+            // skip token and does not echo the snapshot straight back.
+            skipAutoPushCountRef.current += 4
 
             setDosesFromSync(merged, mergedDeleted)
             setRemindersFromSync(
@@ -903,6 +1101,20 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
                 soundEnabled: remoteReminderSettings.soundEnabled,
               },
             )
+            setCustomSubstancesFromSync(mergedCustomSubstances, mergedDeletedCustomSubstances)
+            setMedicationsFromSync(mergedMedications, mergedDeletedMedications)
+
+            // If this device contributed records that were not in the remote
+            // snapshot, persist the consolidated profile after all store refs
+            // have been updated. Echo snapshots are suppressed by ciphertext.
+            if (profileNeedsConsolidatedPush) {
+              setHasPendingChanges(true)
+              if (pushDebounceRef.current) clearTimeout(pushDebounceRef.current)
+              pushDebounceRef.current = setTimeout(() => {
+                pushDebounceRef.current = null
+                pushToSyncRef.current?.()
+              }, 250)
+            }
 
           } catch (e) {
             console.error('[sync] Decryption failed:', e)
@@ -958,7 +1170,18 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     }
     // roomId and password are read via refs to avoid recreating on every keystroke
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isLoaded, reminderIsLoaded, setDosesFromSync, setRemindersFromSync, pushToSync, setSyncStatus])
+  }, [
+    isLoaded,
+    reminderIsLoaded,
+    customSubstancesLoaded,
+    medicationsLoaded,
+    setDosesFromSync,
+    setRemindersFromSync,
+    setCustomSubstancesFromSync,
+    setMedicationsFromSync,
+    pushToSync,
+    setSyncStatus,
+  ])
 
   const disconnectSync = useCallback(() => {
     if (unsubscribeRef.current) unsubscribeRef.current()

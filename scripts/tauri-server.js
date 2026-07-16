@@ -9,33 +9,46 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = 3000;
+// 1420 is Tauri's conventional dev-server port and avoids colliding with the
+// web app's regular `npm run dev` server on port 3000.
+const PORT = Number.parseInt(process.env.TAURI_DEV_PORT || '1420', 10);
+const HOST = process.env.TAURI_DEV_SERVER_HOST || '0.0.0.0';
 const OUT_DIR = path.join(__dirname, '..', 'out');
+
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  console.error(`[tauri-server] Invalid TAURI_DEV_PORT: ${process.env.TAURI_DEV_PORT}`);
+  process.exit(1);
+}
+
+if (!fs.existsSync(path.join(OUT_DIR, 'index.html'))) {
+  console.error(`[tauri-server] Static export not found in ${OUT_DIR}. Run \`npm run build\` first.`);
+  process.exit(1);
+}
 
 const MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
-  '.css':  'text/css; charset=utf-8',
-  '.js':   'application/javascript; charset=utf-8',
-  '.mjs':  'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
-  '.png':  'image/png',
-  '.jpg':  'image/jpeg',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
-  '.gif':  'image/gif',
-  '.svg':  'image/svg+xml',
-  '.ico':  'image/x-icon',
+  '.gif': 'image/gif',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
   '.woff': 'font/woff',
-  '.woff2':'font/woff2',
-  '.ttf':  'font/ttf',
-  '.eot':  'application/vnd.ms-fontobject',
-  '.otf':  'font/otf',
-  '.wav':  'audio/wav',
-  '.mp3':  'audio/mpeg',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.otf': 'font/otf',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
   '.webmanifest': 'application/manifest+json',
   '.webp': 'image/webp',
-  '.map':  'application/json',
-  '.txt':  'text/plain; charset=utf-8',
-  '.xml':  'application/xml',
+  '.map': 'application/json',
+  '.txt': 'text/plain; charset=utf-8',
+  '.xml': 'application/xml',
 };
 
 function getMimeType(filePath) {
@@ -44,72 +57,87 @@ function getMimeType(filePath) {
 }
 
 function resolveFilePath(urlPath) {
-  // Decode URI components (e.g., %5B -> [)
-  let decoded = decodeURIComponent(urlPath);
+  let decoded;
+  try {
+    decoded = decodeURIComponent(urlPath.split('?')[0]);
+  } catch {
+    return null;
+  }
 
-  // Remove query string
-  decoded = decoded.split('?')[0];
+  // Resolve from a synthetic root and then remove the leading separator. This
+  // keeps absolute URL paths inside OUT_DIR and rejects traversal attempts.
+  const relativePath = path.normalize(`/${decoded}`).replace(/^[/\\]+/, '');
+  const filePath = path.resolve(OUT_DIR, relativePath);
+  if (filePath !== OUT_DIR && !filePath.startsWith(`${OUT_DIR}${path.sep}`)) {
+    return null;
+  }
 
-  // Security: prevent path traversal
-  const safePath = path.normalize(decoded).replace(/^(\.\.[/\\])+/, '');
-  let filePath = path.join(OUT_DIR, safePath);
-
-  // If the path points to a directory, try index.html inside it
   if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
     const indexPath = path.join(filePath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      return indexPath;
-    }
+    if (fs.existsSync(indexPath)) return indexPath;
   }
 
-  // If the file doesn't exist, try appending .html (Next.js pretty URLs)
   if (!fs.existsSync(filePath)) {
-    const htmlPath = filePath + '.html';
-    if (fs.existsSync(htmlPath)) {
-      return htmlPath;
-    }
+    const htmlPath = `${filePath}.html`;
+    if (fs.existsSync(htmlPath)) return htmlPath;
   }
 
-  // If still not found, try with /index.html (trailing slash pages)
   if (!fs.existsSync(filePath)) {
     const indexPath = path.join(filePath, 'index.html');
-    if (fs.existsSync(indexPath)) {
-      return indexPath;
-    }
+    if (fs.existsSync(indexPath)) return indexPath;
   }
 
-  return filePath; // Return even if it doesn't exist (will 404)
+  return filePath;
 }
 
 const server = http.createServer((req, res) => {
-  const filePath = resolveFilePath(req.url);
+  const filePath = resolveFilePath(req.url || '/');
+
+  if (!filePath) {
+    res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+    res.end('Bad Request');
+    return;
+  }
 
   fs.readFile(filePath, (err, data) => {
     if (err) {
-      // 404 — serve index.html as fallback (SPA-like behavior for client routing)
+      // Serve the root page as a fallback for client-side routes.
       const indexPage = path.join(OUT_DIR, 'index.html');
       fs.readFile(indexPage, (indexErr, indexData) => {
         if (indexErr) {
-          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
           res.end('Not Found');
           return;
         }
-        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+        res.writeHead(200, {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache',
+        });
         res.end(indexData);
       });
       return;
     }
 
-    const mimeType = getMimeType(filePath);
     res.writeHead(200, {
-      'Content-Type': mimeType,
+      'Content-Type': getMimeType(filePath),
       'Cache-Control': 'no-cache',
     });
     res.end(data);
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[tauri-server] Serving ${OUT_DIR} on http://0.0.0.0:${PORT}`);
+server.on('error', (error) => {
+  if (error.code === 'EADDRINUSE') {
+    console.error(
+      `[tauri-server] Port ${PORT} is already in use. Stop the process using it ` +
+      `or set matching TAURI_DEV_PORT/build.devUrl values.`,
+    );
+  } else {
+    console.error(`[tauri-server] Failed to start: ${error.message}`);
+  }
+  process.exit(1);
 });
 
+server.listen(PORT, HOST, () => {
+  console.log(`[tauri-server] Serving ${OUT_DIR} on http://${HOST}:${PORT}`);
+});

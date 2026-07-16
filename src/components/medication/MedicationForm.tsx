@@ -163,7 +163,7 @@ export function MedicationForm({ initialData, onClose, onSubmit }: MedicationFor
       <Card className="w-full max-w-md">
         <div className="flex items-center justify-between p-4 border-b sticky top-0 bg-base-100 z-20 rounded-t-xl">
           <h2 className="text-xl font-semibold">{initialData ? 'Edit Medication' : 'Add Medication'}</h2>
-          <Button intent="ghost" size="sm" iconOnly onClick={onClose}><X className="w-5 h-5" /></Button>
+          <Button variant="ghost" size="sm" className="btn-square" onClick={onClose}><X className="w-5 h-5" /></Button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
           {/* Substance link picker — lets the user pick a built-in
@@ -209,7 +209,7 @@ export function MedicationForm({ initialData, onClose, onSubmit }: MedicationFor
                 </p>
                 <Button
                   type="button"
-                  intent="ghost"
+                  variant="ghost"
                   size="sm"
                   className="h-6 px-2 text-xs"
                   onClick={handleUnlink}
@@ -291,8 +291,8 @@ export function MedicationForm({ initialData, onClose, onSubmit }: MedicationFor
             <Label htmlFor="isActive" className="cursor-pointer">Active medication</Label>
           </div>
           <div className="flex gap-3 pt-2 sticky bottom-0 bg-base-100 -mx-4 px-4 py-3 border-t">
-            <Button intent="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
-            <Button intent="primary" type="submit" className="flex-1">{initialData ? 'Save Changes' : 'Add Medication'}</Button>
+            <Button variant="ghost" className="flex-1" onClick={onClose}>Cancel</Button>
+            <Button variant="default" type="submit" className="flex-1">{initialData ? 'Save Changes' : 'Add Medication'}</Button>
           </div>
         </form>
       </Card>

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.6] - 2026-07-15
+
+### Added
+- Custom Substance sync
+- Medication Profile sync
+
+### Fixed
+- Accordions in harm reduction guides didnt work
+- Scrolling was broken
+
+### Changed
+- Many behind the scenes UI things
+
 ## [0.1.5] - 2026-07-15
 
 ### Changed

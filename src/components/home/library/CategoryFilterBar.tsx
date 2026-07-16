@@ -73,7 +73,7 @@ function FilterPill({ active, onClick, label, dotColor }: FilterPillProps) {
       type="button"
       onClick={onClick}
       className={cn(
-        'flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors tap-feedback-sm',
+        'flex min-h-[44px] shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors tap-feedback-sm',
         active
           ? 'border-base-content bg-base-content text-base-100'
           : 'border-base-300 bg-base-200/60 text-neutral-content hover:bg-base-200 hover:text-base-content',

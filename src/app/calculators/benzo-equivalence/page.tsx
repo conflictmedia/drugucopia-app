@@ -74,7 +74,7 @@ export default function BenzoEquivalencePage() {
           />
         </div>
 
-        <Button intent="primary" className="w-full" onClick={handleConvert}>
+        <Button variant="default" className="w-full" onClick={handleConvert}>
           Calculate Equivalent Dose
         </Button>
 

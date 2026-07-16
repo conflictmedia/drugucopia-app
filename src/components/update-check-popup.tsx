@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type MouseEvent } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { X, Github, ArrowUpRight, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/tauri-bridge'
@@ -25,27 +25,9 @@ export function UpdateCheckPopup({
   releaseNotes,
   releaseUrl,
 }: UpdateCheckPopupProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-
-    if (!latestVersion || latestVersion === currentVersion) return
-
-    const lastChecked = getLastCheckedVersion()
-    const lastCheckTime = getLastCheckTime()
-
-    const neverSeenThisVersion = lastChecked !== latestVersion
-    const remindLaterCooldownElapsed =
-      lastChecked === latestVersion &&
-      lastCheckTime !== null &&
-      Date.now() - lastCheckTime > CHECK_INTERVAL_MS
-
-    if (neverSeenThisVersion || remindLaterCooldownElapsed) {
-      setIsOpen(true)
-    }
-  }, [currentVersion, latestVersion])
+  const [isOpen, setIsOpen] = useState(() =>
+    shouldShowUpdate(currentVersion, latestVersion),
+  )
 
   const handleClose = () => {
     setIsOpen(false)
@@ -79,7 +61,7 @@ export function UpdateCheckPopup({
     }
   }
 
-  if (!mounted || !isOpen) return null
+  if (!isOpen) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={handleClose}>
@@ -150,6 +132,20 @@ export function UpdateCheckPopup({
       </div>
     </div>
   )
+}
+
+function shouldShowUpdate(currentVersion: string, latestVersion: string): boolean {
+  if (!latestVersion || latestVersion === currentVersion) return false
+
+  const lastChecked = getLastCheckedVersion()
+  const lastCheckTime = getLastCheckTime()
+  const recentlyDeferred =
+    lastCheckTime !== null && Date.now() - lastCheckTime < CHECK_INTERVAL_MS
+
+  // A route transition can remount this component in the Android WebView.
+  // Respect the "Remind Me Later" timestamp even though that action does not
+  // permanently mark the release as seen.
+  return lastChecked !== latestVersion && !recentlyDeferred
 }
 
 function getLastCheckedVersion(): string | null {

@@ -157,10 +157,10 @@ export function MedicationList() {
                   {med.notes && <p className="text-xs text-base-content/50 mt-1 italic line-clamp-2">{med.notes}</p>}
                 </div>
                 <div className="flex gap-2 shrink-0">
-                  <Button variant="ghost" size="sm" iconOnly onClick={() => { setEditingMed(med); setShowForm(true); }}>
+                  <Button variant="ghost" size="sm" className="btn-square" onClick={() => { setEditingMed(med); setShowForm(true); }}>
                     <Edit className="w-4 h-4" />
                   </Button>
-                  <Button variant="destructive" size="sm" iconOnly onClick={() => deleteMedication(med.id)}>
+                  <Button variant="destructive" size="sm" className="btn-square" onClick={() => deleteMedication(med.id)}>
                     <Trash className="w-4 h-4" />
                   </Button>
                 </div>

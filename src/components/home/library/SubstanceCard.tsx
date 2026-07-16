@@ -60,6 +60,8 @@ export const SubstanceCard = memo(function SubstanceCard({
         // Make the whole card a button
         'cursor-pointer text-left',
         'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40',
+        // Content visibility for performance on long lists
+        'content-visibility-auto contain-intrinsic-size-[200px]',
       )}
     >
       <div className="card-body gap-3 p-4 md:p-5">

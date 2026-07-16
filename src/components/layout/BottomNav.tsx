@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { FlaskConical, Activity, BarChart3, Shield, Menu } from 'lucide-react'
+import { Menu } from 'lucide-react'
 import { NAV_ITEMS, isNavItemActive } from './navigation'
 import { cn } from '@/lib/utils'
 
@@ -29,7 +30,7 @@ export function BottomNav({ onMoreClick }: BottomNavProps) {
         const Icon = item.icon
 
         return (
-          <a
+          <Link
             key={item.id}
             href={item.href}
             className={cn(
@@ -41,7 +42,7 @@ export function BottomNav({ onMoreClick }: BottomNavProps) {
           >
             <Icon className="h-5 w-5" aria-hidden="true" />
             <span>{item.label}</span>
-          </a>
+          </Link>
         )
       })}
 

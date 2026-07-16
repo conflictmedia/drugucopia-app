@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useMemo, useEffect, Suspense } from 'react'
+import React, { useState, useMemo, useEffect, Suspense, useCallback } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Shield,
@@ -38,6 +38,7 @@ import {
   type DangerousInteraction,
 } from '@/lib/harm-reduction-data'
 import { substances } from '@/lib/substances/index'
+import { PullToRefresh } from '@/components/ui/PullToRefresh'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 
@@ -101,7 +102,7 @@ function getGuideIcon(name: string): LucideIcon {
 
 function EmergencyCard({ resource }: { resource: typeof emergencyResources[0] }) {
   return (
-    <div className="card card-transparent border-red-500/20 bg-red-500/5 pulse-danger card-lift">
+    <div className="card card-transparent border-red-500/20 bg-red-500/5 pulse-danger card-lift content-visibility-auto contain-intrinsic-size-[200px]">
       <div className="card-body p-4">
         <div className="flex items-start gap-3">
           <div className="p-2 rounded-lg bg-red-500/10 shrink-0">
@@ -121,7 +122,7 @@ function EmergencyCard({ resource }: { resource: typeof emergencyResources[0] })
 function PrincipleChip({ principle }: { principle: typeof quickPrinciples[0] }) {
   const iconComponent = getGuideIcon(principle.icon)
   return (
-    <div className="card card-transparent card-lift">
+    <div className="card card-transparent card-lift content-visibility-auto contain-intrinsic-size-[200px]">
       <div className="card-body flex-row items-start gap-3 p-4">
         <div className="p-2 rounded-lg bg-gradient-to-br from-primary/15 to-primary/5 shrink-0 border border-primary/10">
           {React.createElement(iconComponent, { className: 'h-4 w-4 text-primary' })}
@@ -140,7 +141,7 @@ function InteractionRow({ interaction }: { interaction: DangerousInteraction }) 
   const riskLabel = riskLabels[interaction.risk] || interaction.risk.toUpperCase()
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-xl border border-base-300/70 bg-transparent hover:bg-base-200/50 transition-all card-lift">
+    <div className="flex items-start gap-3 p-3 rounded-xl border border-base-300/70 bg-transparent hover:bg-base-200/50 transition-all card-lift content-visibility-auto contain-intrinsic-size-[200px]">
       <div className="flex items-center gap-2 shrink-0 mt-0.5">
         <AlertTriangle className="h-4 w-4 text-red-400" />
       </div>
@@ -184,6 +185,10 @@ function HarmReductionFallback() {
 function HarmReductionContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
+
+  const handleRefresh = useCallback(async () => {
+    router.refresh()
+  }, [router])
 
   // G3 — substance-specific deep link
   const substanceId = searchParams.get('substance')
@@ -229,8 +234,9 @@ function HarmReductionContent() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      {/* ── Unified Content ── */}
-      <div className="container mx-auto max-w-5xl flex-1 px-4 py-6 lg:px-6 lg:py-10">
+      <PullToRefresh onRefresh={handleRefresh} threshold={60}>
+        {/* ── Unified Content ── */}
+        <div className="container mx-auto max-w-5xl flex-1 px-4 py-6 lg:px-6 lg:py-10">
         {/* Hero */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-3">
@@ -400,7 +406,7 @@ function HarmReductionContent() {
                 {filteredGuides.map((guide) => {
                   const GuideIcon = getGuideIcon(guide.icon)
                   return (
-                    <AccordionItem key={guide.id} value={guide.id}>
+                    <AccordionItem key={guide.id} value={guide.id} className="content-visibility-auto contain-intrinsic-size-[200px]">
                       <AccordionTrigger className="px-4 hover:no-underline">
                         <div className="flex items-center gap-3">
                           <div className="p-1.5 rounded-md bg-base-200 shrink-0">
@@ -487,7 +493,7 @@ function HarmReductionContent() {
                 rel="noopener noreferrer"
                 className="block"
               >
-                <div className="card card-transparent hover:border-primary/50 transition-all h-full card-lift">
+                <div className="card card-transparent hover:border-primary/50 transition-all h-full card-lift content-visibility-auto contain-intrinsic-size-[200px]">
                   <div className="card-body p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -530,6 +536,7 @@ function HarmReductionContent() {
           </div>
         </section>
       </div>
+      </PullToRefresh>
     </div>
   )
 }

@@ -31,7 +31,7 @@ const AccordionContext = React.createContext<{
   openItems: Set<string>
   toggleItem: (value: string) => void
   type: "single" | "multiple"
-}>({ openItems: new Set(), toggleItem: () => {}, type: "single" })
+}>({ openItems: new Set(), toggleItem: () => { }, type: "single" })
 
 const AccordionItemContext = React.createContext<{
   value: string
@@ -120,6 +120,10 @@ function AccordionItem({
         className={cn(
           "collapse join-item",
           variantClass[variant],
+          // daisyUI's collapse component does not react to our data-state
+          // attribute; it requires one of these state classes to change the
+          // content grid row from 0fr to 1fr.
+          isOpen ? "collapse-open" : "collapse-close",
           className
         )}
         {...props}

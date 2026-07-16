@@ -167,7 +167,7 @@ export function OnboardingTour({ isOpen: controlledOpen, onClose }: { isOpen?: b
                 />
               ))}
             </div>
-            <Button intent="ghost" size="sm" iconOnly onClick={skipTour}>
+            <Button variant="ghost" size="sm" className="btn-square" onClick={skipTour} aria-label="Skip tour">
               <X className="w-4 h-4" />
             </Button>
           </div>
@@ -212,16 +212,16 @@ export function OnboardingTour({ isOpen: controlledOpen, onClose }: { isOpen?: b
 
           {/* Navigation */}
           <div className="px-6 py-4 border-t border-base-300 flex items-center justify-between">
-            <Button intent="ghost" onClick={prevStep} disabled={currentStep === 0}>
+            <Button variant="ghost" onClick={prevStep} disabled={currentStep === 0}>
               <ChevronLeft className="w-4 h-4 mr-1" /> Back
             </Button>
             <div className="flex items-center gap-2">
               {currentStep > 0 && (
-                <Button intent="ghost" size="sm" onClick={skipTour}>
-                  Skip Tour
-                </Button>
+<Button variant="ghost" size="sm" onClick={skipTour}>
+  Skip Tour
+</Button>
               )}
-              <Button intent="primary" onClick={nextStep} className="ml-auto">
+              <Button variant="default" onClick={nextStep} className="ml-auto">
                 {isLastStep ? (
                   <>Get Started <Check className="w-4 h-4 ml-1" /></>
                 ) : (

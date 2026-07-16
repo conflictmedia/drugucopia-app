@@ -134,11 +134,11 @@ export function LayoutClient({ children }: LayoutClientProps) {
   return (
     <SyncProvider>
       <ReminderProvider>
-        <div className="min-h-[100dvh] bg-transparent">
+        <div className="h-[100dvh] overflow-hidden bg-transparent">
           <MilkdropBackgroundWrapper />
 
           {isMobile ? (
-            <div className="drawer">
+            <div className="drawer h-[100dvh] overflow-hidden">
               <input
                 id={DRAWER_ID}
                 type="checkbox"
@@ -152,7 +152,7 @@ export function LayoutClient({ children }: LayoutClientProps) {
                   onMenuClick={() => setDrawerOpen(true)}
                 />
 
-                <main className="relative flex-1 pb-[calc(env(safe-area-inset-bottom,0px)+64px)]">
+                <main className="relative flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom,0px)+64px)]">
                   {children}
                 </main>
 
@@ -188,7 +188,7 @@ export function LayoutClient({ children }: LayoutClientProps) {
                 <TopBar
                   onMenuClick={() => setDrawerOpen(true)}
                 />
-                <main className="relative flex-1 pb-[env(safe-area-inset-bottom,0px)]">
+                <main className="relative flex-1 overflow-y-auto pb-[env(safe-area-inset-bottom,0px)]">
                   {children}
                 </main>
               </div>

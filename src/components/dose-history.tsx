@@ -1288,7 +1288,7 @@ export function DoseHistory() {
                           const knownSubstance = substances.find(s => s.id === dose.substanceId || s.name.toLowerCase() === dose.substanceName.toLowerCase())
 
                           return (
-                            <div key={dose.id} className="dose-log-entry rounded-lg border p-3 hover:bg-base-200/50 transition-colors">
+                            <div key={dose.id} className="dose-log-entry rounded-lg border p-3 hover:bg-base-200/50 transition-colors content-visibility-auto contain-intrinsic-size-[200px]">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-2 flex-wrap">
