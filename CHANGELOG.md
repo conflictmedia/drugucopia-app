@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.7] - 2026-07-15
+
+### Fixed
+- Update Checker was not detecting right version
+- Update Checker popup markdown
+
 ## [0.1.6] - 2026-07-15
 
 ### Added
