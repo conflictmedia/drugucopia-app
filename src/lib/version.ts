@@ -1,5 +1,7 @@
-// This file is generated at build time. Do not edit manually.
-// Version is synced from package.json and tauri.conf.json
+// package.json is the release workflow's source of truth. Importing it here
+// prevents the UI version from drifting when a release is bumped.
+import packageMetadata from "../../package.json";
+import tauriConfig from "../../src-tauri/tauri.conf.json";
 
-export const APP_VERSION = '0.1.2'
-export const TAURI_VERSION = '0.2.0'
+export const APP_VERSION = packageMetadata.version;
+export const TAURI_VERSION = tauriConfig.version;
