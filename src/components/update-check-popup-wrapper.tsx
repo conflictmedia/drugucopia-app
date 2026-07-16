@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { UpdateCheckPopup, GITHUB_API_URL } from './update-check-popup'
 import { APP_VERSION } from '@/lib/version'
+import { isTauri } from '@/lib/tauri-bridge'
 
 interface GitHubRelease {
   tag_name: string
@@ -32,6 +33,7 @@ function compareVersions(current: string, latest: string): number {
 }
 
 export function UpdateCheckPopupWrapper() {
+  const [currentVersion, setCurrentVersion] = useState(APP_VERSION)
   const [latestVersion, setLatestVersion] = useState<string>('')
   const [releaseNotes, setReleaseNotes] = useState<string>('')
   const [releaseUrl, setReleaseUrl] = useState<string>('')
@@ -41,6 +43,21 @@ export function UpdateCheckPopupWrapper() {
   useEffect(() => {
     async function fetchLatestRelease() {
       try {
+        // In a native build, ask Tauri for the installed package version.
+        // package.json remains the web/PWA fallback and build-time source of
+        // truth, but the runtime value guarantees the popup describes the APK
+        // that is actually installed on the device.
+        let installedVersion = APP_VERSION
+        if (isTauri()) {
+          try {
+            const { getVersion } = await import('@tauri-apps/api/app')
+            installedVersion = parseVersion(await getVersion())
+          } catch (versionError) {
+            console.debug('Could not read the native app version:', versionError)
+          }
+        }
+        setCurrentVersion(installedVersion)
+
         const response = await fetch(GITHUB_API_URL, {
           headers: {
             Accept: 'application/vnd.github.v3+json',
@@ -61,7 +78,7 @@ export function UpdateCheckPopupWrapper() {
         const version = parseVersion(release.tag_name)
 
         // Compare versions
-        const comparison = compareVersions(APP_VERSION, version)
+        const comparison = compareVersions(installedVersion, version)
 
         if (comparison < 0) {
           // New version available
@@ -87,7 +104,7 @@ export function UpdateCheckPopupWrapper() {
 
   return (
     <UpdateCheckPopup
-      currentVersion={APP_VERSION}
+      currentVersion={currentVersion}
       latestVersion={latestVersion}
       releaseNotes={releaseNotes}
       releaseUrl={releaseUrl}

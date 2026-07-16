@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, type MouseEvent } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { X, Github, ArrowUpRight, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { isTauri } from '@/lib/tauri-bridge'
@@ -106,9 +107,11 @@ export function UpdateCheckPopup({
           </div>
 
           {releaseNotes && (
-            <div className="prose prose-sm max-w-none dark:prose-invert bg-base-200/50 rounded-box p-4 max-h-64 overflow-y-auto mb-4">
-              <h4 className="text-sm font-semibold text-base-content mb-2">What's New</h4>
-              <div className="text-sm text-base-content/80 whitespace-pre-wrap">{releaseNotes}</div>
+            <div className="bg-base-200/50 rounded-box p-4 max-h-64 overflow-y-auto mb-4">
+              <h4 className="text-sm font-semibold text-base-content mb-3">What's New</h4>
+              <div className="prose prose-sm max-w-none text-base-content/80 dark:prose-invert prose-headings:text-base-content prose-p:text-base-content/80 prose-li:text-base-content/80 prose-a:text-primary">
+                <ReactMarkdown>{releaseNotes}</ReactMarkdown>
+              </div>
             </div>
           )}
 
