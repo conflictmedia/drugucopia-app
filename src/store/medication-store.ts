@@ -101,6 +101,7 @@ export interface Contraindication {
 
 interface MedicationState {
   medications: UserMedication[];
+  deletedIds: Set<string>;
   contraindications: Contraindication[];
   loaded: boolean;
   
@@ -108,35 +109,48 @@ interface MedicationState {
   addMedication: (med: UserMedication) => void;
   updateMedication: (id: string, patch: Partial<UserMedication>) => void;
   deleteMedication: (id: string) => void;
+  setMedicationsFromSync: (medications: UserMedication[], deletedIds: Set<string>) => void;
   checkContraindications: (substanceIds: string[]) => Contraindication[];
 }
 
 const KEY = 'drugucopia-user-medications';
+const DELETED_KEY = 'drugucopia-deleted-user-medications';
 
 function load(): UserMedication[] {
   if (typeof window === 'undefined') return [];
   try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { return []; }
 }
 
-function save(list: UserMedication[]) {
+function loadDeleted(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try { return new Set(JSON.parse(localStorage.getItem(DELETED_KEY) || '[]')); } catch { return new Set(); }
+}
+
+function save(list: UserMedication[], deletedIds?: Set<string>) {
   if (typeof window === 'undefined') return;
-  try { localStorage.setItem(KEY, JSON.stringify(list)); } catch {}
+  try {
+    localStorage.setItem(KEY, JSON.stringify(list));
+    if (deletedIds) localStorage.setItem(DELETED_KEY, JSON.stringify([...deletedIds]));
+  } catch {}
 }
 
 export const useMedicationStore = create<MedicationState>((set, get) => ({
   medications: [],
+  deletedIds: new Set(),
   contraindications: [],
   loaded: false,
 
   initialize: () => {
     if (get().loaded) return;
-    set({ medications: load(), loaded: true });
+    set({ medications: load(), deletedIds: loadDeleted(), loaded: true });
   },
 
   addMedication: (med) => {
-    const next = [...get().medications, med];
-    save(next);
-    set({ medications: next });
+    const deletedIds = new Set(get().deletedIds);
+    deletedIds.delete(med.id);
+    const next = [...get().medications.filter((item) => item.id !== med.id), med];
+    save(next, deletedIds);
+    set({ medications: next, deletedIds });
   },
 
   updateMedication: (id, patch) => {
@@ -147,8 +161,14 @@ export const useMedicationStore = create<MedicationState>((set, get) => ({
 
   deleteMedication: (id) => {
     const next = get().medications.filter(m => m.id !== id);
-    save(next);
-    set({ medications: next });
+    const deletedIds = new Set(get().deletedIds).add(id);
+    save(next, deletedIds);
+    set({ medications: next, deletedIds });
+  },
+
+  setMedicationsFromSync: (medications, deletedIds) => {
+    save(medications, deletedIds);
+    set({ medications, deletedIds, loaded: true });
   },
 
   checkContraindications: (substanceIds) => {
